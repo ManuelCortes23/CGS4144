@@ -5,6 +5,9 @@ Possible sources:
 
 https://www.refine.bio/experiments/SRP076307/single-cell-rna-seq-of-human-pancreatic-endocrine-cells-from-juvenile-adult-control-and-type-2-diabetic-donors#samples
 
+backup:
+
+https://www.refine.bio/experiments/SRP033566/comparative-rna-sequencing-analysis-of-myocardial-and-circulating-small-rnas-in-human-heart-failure-and-their-utility-as-biomarkers-small-rna-seq
 
 # Some Questions:
 
