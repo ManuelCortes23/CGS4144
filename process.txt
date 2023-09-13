@@ -1,0 +1,43 @@
+Handling FASTQ (.fastq or .fastq.gz) files is one of the first steps in many bioinformatics pipelines, particularly those dealing with next-generation sequencing (NGS) data. Here's a general overview of the steps you might follow after obtaining your FASTQ files:
+
+1. **Quality Control Check:** Before any downstream analyses, you should check the quality of your sequencing reads.
+   - Tool: `FastQC` can be used to visualize the quality of your reads.
+   - Once you get the FastQC output, you might decide to trim or filter your reads based on quality or other criteria.
+
+2. **Read Trimming/Filtering:** Depending on the quality check, you might want to trim off low-quality bases or entirely filter out low-quality reads.
+   - Tools: `Trimmomatic`, `Cutadapt`, or `bbduk` from BBTools are commonly used.
+
+3. **Read Alignment/Mapping:** Align the reads to a reference genome (or transcriptome, depending on your analysis).
+   - For DNA-seq: Tools like `BWA`, `Bowtie2`, or `STAR` (for RNA-seq) are commonly used.
+   - For RNA-seq: `HISAT2`, `STAR`, and `Salmon` can be used.
+
+4. **Post-processing of aligned reads (mainly for DNA-seq):**
+   - Sort BAM files using `Samtools` or `Sambamba`.
+   - Mark duplicates using `Picard`.
+   - Base quality score recalibration (BQSR) with `GATK`, if necessary.
+
+5. **Variant Calling (for DNA-seq):**
+   - Use tools like `GATK`, `Samtools mpileup`, or `FreeBayes` to call SNPs and INDELs.
+
+6. **Differential Expression Analysis (for RNA-seq):**
+   - Tools: `DESeq2`, `edgeR`, or `limma-voom` for count-based differential expression.
+   - For transcript abundance estimation: `Salmon`, `Kallisto`, or `RSEM`.
+
+7. **Functional Annotation & Pathway Analysis (especially for RNA-seq):**
+   - GO enrichment, pathway analysis using tools/databases like DAVID, KEGG, Reactome, etc.
+
+8. **Variant Annotation (for DNA-seq):**
+   - Use tools like `SnpEff` or `ANNOVAR` to annotate the biological effects of the variants.
+
+9. **Structural Variant Detection (for DNA-seq):**
+   - Tools: `Lumpy`, `Manta`, or `DELLY`.
+
+10. **Data Visualization:**
+   - Use tools like `IGV`, `UCSC Genome Browser`, or `Tableau` for visualization.
+   - For RNA-seq, `PCA` plots and heatmaps can be useful.
+
+11. **Data Backup and Sharing:**
+   - Store the raw data, processed data, and results in a secure and backed-up location.
+   - Consider sharing the data on platforms like SRA, ENA, or GEO, if applicable.
+
+This is a very general overview, and the exact steps and tools you'd use depend heavily on the nature of your experiment and the kind of data you have. Always consult relevant literature, protocols, and bioinformatics community forums for the specifics related to your dataset and research question!
