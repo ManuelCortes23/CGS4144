@@ -1,0 +1,39 @@
+---
+title: "data_exploration"
+author: "Manuel Cortes"
+date: "2023-09-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pheatmap)
+library(rjson)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r loading in the data}
+# Read a gene expression TSV (GSE11111.tsv) into R as a data.frame with base R
+expression_df <- read.delim("dataset_final/SRP033566/SRP033566.tsv", header = TRUE,
+                            row.names = 1, stringsAsFactors = FALSE)
+# Reading JSON Files
+metadata_list <- fromJSON(file = "dataset_final/aggregated_metadata.json")
+```
+
+## Including Plots
+
+```{r heatmap, echo=FALSE}
+# Generate a heatmap SUPER WRONG RIGHT NOW
+# pheatmap(expression_df, 
+#          scale = "row",       # Scale genes to have mean=0 and variance=1
+#          clustering_distance_rows = "euclidean", 
+#          clustering_distance_cols = "euclidean", 
+#          clustering_method = "complete", 
+#          show_rownames = FALSE) # Hide row names for better visibility (you can change this as per your requirement)
+```
+
