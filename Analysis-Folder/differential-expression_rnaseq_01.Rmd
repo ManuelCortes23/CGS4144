@@ -257,12 +257,16 @@ The mutation status is stored along with other information in a single string (t
 We need to extract the mutation status information into its own column to make it easier to use.
 
 ```{r}
+# metadata <- metadata %>%
+#   # Let's get the RPL10 mutation status from this variable
+#   dplyr::mutate(mutation_status = dplyr::case_when(
+#     stringr::str_detect(refinebio_title, "CTL") ~ "CTL",
+#     stringr::str_detect(refinebio_title, "DCM") ~ "DCM"
+#   ))
+
 metadata <- metadata %>%
-  # Let's get the RPL10 mutation status from this variable
-  dplyr::mutate(mutation_status = dplyr::case_when(
-    stringr::str_detect(refinebio_title, "CTL") ~ "CTL",
-    stringr::str_detect(refinebio_title, "DCM") ~ "DCM"
-  ))
+  dplyr::mutate(Group = stringr::str_extract(refinebio_title, "^[A-Z]{3}"))
+
 ```
 
 Let's take a look at `metadata` to see if this worked by looking at the `refinebio_title` and `mutation_status` columns.
@@ -270,7 +274,7 @@ Let's take a look at `metadata` to see if this worked by looking at the `refineb
 ```{r}
 # Let's take a look at the original metadata column's info
 # and our new `mutation_status` column
-dplyr::select(metadata, refinebio_title, mutation_status)
+dplyr::select(metadata, refinebio_title, Group)
 ```
 
 Before we set up our model in the next step, we want to check if our modeling variable is set correctly.
@@ -279,7 +283,7 @@ Here we will use the `str()` function to print out a preview of the **str**uctur
 
 ```{r}
 # Print out a preview of `mutation_status`
-str(metadata$mutation_status)
+str(metadata$Group)
 ```
 
 Currently, `mutation_status` is stored as a character, which is not necessarily what we want.
@@ -288,12 +292,23 @@ To make sure it is set how we want for the `DESeq` object and subsequent testing
 In the `levels` argument, we will list `reference` first since that is our control group.
 
 ```{r}
-# Make mutation_status a factor and set the levels appropriately
+# # Make mutation_status a factor and set the levels appropriately
+# metadata <- metadata %>%
+#   dplyr::mutate(
+#     # Here we define the values our factor variable can have and their order.
+#     mutation_status = factor(mutation_status, levels = c("CTL", "DCM"))
+#   )
+
+# Extract unique values of the Group column, but exclude "CTL"
+unique_groups <- setdiff(unique(metadata$Group), "CTL")
+
+# Make sure "CTL" is the first level, followed by the other unique values
+ordered_levels <- c("CTL", sort(unique_groups))
+
+# Convert the Group column to a factor with these levels
 metadata <- metadata %>%
-  dplyr::mutate(
-    # Here we define the values our factor variable can have and their order.
-    mutation_status = factor(mutation_status, levels = c("CTL", "DCM"))
-  )
+  dplyr::mutate(Group = factor(Group, levels = ordered_levels))
+
 ```
 
 Note if you don't specify `levels`, the `factor()` function will set levels in alphabetical order -- which sometimes means your control group will not be listed first!
@@ -301,7 +316,7 @@ Note if you don't specify `levels`, the `factor()` function will set levels in a
 Let's double check if the levels are what we want using the `levels()` function.
 
 ```{r}
-levels(metadata$mutation_status)
+levels(metadata$Group)
 ```
 
 Yes!
@@ -343,7 +358,7 @@ ddset <- DESeqDataSetFromMatrix(
   # Supply the `colData` with our metadata data frame
   colData = metadata,
   # Supply our experimental variable to `design`
-  design = ~mutation_status
+  design = ~Group
 )
 ```
 
@@ -360,7 +375,10 @@ deseq_object <- DESeq(ddset)
 Let's extract the results table from the `DESeq` object.
 
 ```{r}
-deseq_results <- results(deseq_object)
+# deseq_results <- results(deseq_object)
+
+deseq_results <- results(deseq_object, contrast = c("Group", "DCM", "CTL"))
+
 ```
 
 Here we will use `lfcShrink()` function to obtain shrunken log fold change estimates based on negative binomial distribution.
@@ -408,7 +426,7 @@ head(deseq_df)
 To double check what a differentially expressed gene looks like, we can plot one with `DESeq2::plotCounts()` function.
 
 ```{r}
-plotCounts(ddset, gene = "ENSMUSG00000026623", intgroup = "mutation_status")
+plotCounts(ddset, gene = "ENSMUSG00000026623", intgroup = "Group")
 ```
 
 The `R98S` mutated samples have higher expression of this gene than the control group, which helps assure us that the results are showing us what we are looking for.
