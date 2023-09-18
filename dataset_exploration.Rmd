@@ -7,8 +7,13 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("org.Hs.eg.db")
 library(pheatmap)
 library(rjson)
+library(magrittr)
+library(org.Hs.eg.db)
 ```
 
 ## R Markdown
@@ -19,12 +24,27 @@ When you click the **Knit** button a document will be generated that includes bo
 
 ```{r loading in the data}
 # Read a gene expression TSV (GSE11111.tsv) into R as a data.frame with base R
-expression_df <- read.delim("dataset_final/SRP033566/SRP033566.tsv", header = TRUE,
-                            row.names = 1, stringsAsFactors = FALSE)
+expression_df <- read.delim(file = "Analysis-Folder/data/SRP033566/SRP033566.tsv",  header = TRUE, stringsAsFactors = FALSE)
+genes <- expression_df$Gene
+unique_genes <- length(unique(genes))
+
 # Reading JSON Files
-metadata_list <- fromJSON(file = "dataset_final/aggregated_metadata.json")
+metadata_list <- read.delim(file = "Analysis-Folder/data/SRP033566/metadata_SRP033566.tsv")
 ```
 
+<!--use ENTREZID instead of SYMBOL if this is incorrect, ask prof-->
+
+```{r map ensemble IDS to hugo}
+
+mapped_list <- mapIds(
+  org.Hs.eg.db, # Replace with annotation package for your organism
+  keys = genes,
+  keytype = "ENSEMBL", # Replace with the type of gene identifiers in your data
+  column = "SYMBOL", # The type of gene identifiers you would like to map to
+  multiVals = "list"
+)
+
+```
 ## Including Plots
 
 ```{r heatmap, echo=FALSE}
