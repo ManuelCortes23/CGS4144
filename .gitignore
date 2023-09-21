@@ -1,4 +1,42 @@
+# Ignore .DS_Store files in any directory
+.DS_Store
+**/.DS_Store
 
-Analysis-Folder/.RData
-Analysis-Folder/.Rhistory
-Analysis-Folder/.Rhistory
+# R specific ignores
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Ignore R project files (optional, depending on whether you want them included)
+*.Rproj
+
+# Ignore compiled files
+*.o
+*.so
+*.dll
+
+# Ignore packaged tarballs
+*.tar.gz
+
+# Python specific ignores
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore Jupyter Notebook files on the network share
+.ipynb_checkpoints
+
+# Ignore files related to virtual environments
+venv/
+*.venv
+.env
+
+# Ignore Python distribution directory
+dist/
+
+# Ignore Python egg directory
+*.egg-info/
+
+# Ignore build directory (Python setup.py)
+build/
