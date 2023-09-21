@@ -194,6 +194,11 @@ if (!("apeglm" %in% installed.packages())) {
   # Install this package if it isn't installed yet
   BiocManager::install("apeglm", update = FALSE)
 }
+# Install the human package
+if (!("org.Hs.eg.db" %in% installed.packages())) {
+  # Install this package if it isn't installed yet
+  BiocManager::install("org.Hs.eg.db", update = FALSE)
+}
 ```
 
 Attach the libraries we need for this analysis:
@@ -207,6 +212,9 @@ library(ggplot2)
 
 # We will need this so we can use the pipe: %>%
 library(magrittr)
+
+# Human Annotation
+library(org.Hs.eg.db)
 ```
 
 The jitter plot we make later on with the `DESeq2::plotCounts()` function involves some randomness.
