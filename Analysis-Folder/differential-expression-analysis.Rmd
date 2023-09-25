@@ -7,7 +7,6 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
 # Attach the DESeq2 library
 library(DESeq2)
 
@@ -103,6 +102,12 @@ deseq_object <- DESeq(ddset)
 anything beyond this is not very stable
 
 ```{r}
+
+if(!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install("apeglm")
+
 deseq_results <- results(deseq_object, contrast = c("Group", "DCM", "CTL"))
 
 deseq_results <- lfcShrink(
@@ -156,4 +161,59 @@ ggsave(
   plot = volcano_plot,
   file.path("plots/", "SRP123625_volcano_plot.png")
 ) # Replace with a plot name relevant to your data
+```
+
+# (4) Heat map
+
+```{r}
+if(!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+# BiocManager::install("ComplexHeatmap")
+# Run the above line to install ComplexHeatmap.
+# Afterwards, comment it out.
+
+library(ComplexHeatmap)
+
+normalized_counts <- counts(deseq_object, normalized=TRUE)
+
+Heatmap(
+  normalized_counts,
+  col = colorRampPalette(c("white","blue"))(50),
+  name = "Heatmap Trial",
+  cluster_rows = TRUE,
+  cluster_columns = TRUE,
+  show_row_names = FALSE,
+  show_column_names = FALSE
+)
+```
+
+# (6) 
+
+```{r} 
+
+if(!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+# BiocManager::install("knitr")
+# BiocManager::install("clusterProfiler")
+# Uncomment the above two lines if you need the 
+# below libraries.
+
+library(knitr)
+library(clusterProfiler)
+
+clusterProfiler_results <- results(deseq_object)
+
+go_enrich <- enrichGO(
+  gene = rownames(results),
+  orgDb = org.Hs.eg.db,
+  keyType = "ENSEMBL",
+  ont = "BP",
+  pAdjustMethod = "BH",
+  pvalueCutoff = 0.05,
+  qvalueCutoff = 0.05
+)
+
+kable(significantly_enriched, format="html", caption = "Enriched")
 ```
