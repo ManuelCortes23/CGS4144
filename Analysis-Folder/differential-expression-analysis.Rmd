@@ -7,7 +7,14 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
 
+BiocManager::install("apeglm")
+install.packages("gprofiler2")
+library(gprofiler2)
+
+library(M3C)
 # Attach the DESeq2 library
 library(DESeq2)
 
@@ -130,7 +137,7 @@ head(deseq_df)
 readr::write_tsv(
   deseq_df,
   file.path(
-    results_dir,
+    'results',
     "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name
   )
 )
@@ -141,19 +148,70 @@ readr::write_tsv(
 
 ```{r}
 # We'll assign this as `volcano_plot`
-volcano_plot <- EnhancedVolcano::EnhancedVolcano(
-  deseq_df,
-  lab = deseq_df$Gene,
-  x = "log2FoldChange",
-  y = "padj",
-  pCutoff = 0.01 # Loosen the cutoff since we supplied corrected p-values
-)
+# volcano_plot <- EnhancedVolcano::EnhancedVolcano(
+#   deseq_df,
+#   lab = deseq_df$Gene,
+#   x = "log2FoldChange",
+#   y = "padj",
+#   pCutoff = 0.01 # Loosen the cutoff since we supplied corrected p-values
+# )
 
 # Print out plot here
-volcano_plot
+# volcano_plot
+
+# ggsave(
+#   plot = volcano_plot,
+#   file.path("plots/", "SRP123625_volcano_plot.png")
+# ) # Replace with a plot name relevant to your data
+```
+
+
+## PCA Plot
+```{r}
+
+#use the previously created DESeq object to create a PCA plot
+#perform variance stabilizing transformation, correcting for size and normalization factors
+vsd <- vst(deseq_object, blind=FALSE)
+PCA_Plot <- plotPCA(vsd, intgroup=c("Group"))
+# Print out plot here
+PCA_Plot
+
+#save the PCA plot
+ggsave(
+  plot = PCA_Plot,
+  file.path("plots/", "SRP123625_pca_plot.png")
+) # Replace with a plot name relevant to your data
+```
+### tSNE Plot
+```{r}
+#use the previously created DESeq object to create a tSNE plot
+#perform variance stabilizing transformation, correcting for size and normalization factors
+vsd <- vst(deseq_object, blind=FALSE)
+tSNE_Plot <- tsne(assay(vsd),labels=as.factor(deseq_object$Group))
+# Print out plot here
+tSNE_Plot
 
 ggsave(
-  plot = volcano_plot,
-  file.path("plots/", "SRP123625_volcano_plot.png")
+  plot = tSNE_Plot,
+  file.path("plots/", "SRP123625_tSNE_plot.png")
 ) # Replace with a plot name relevant to your data
+```
+
+### find significantly expressed genes
+```{r}
+expressed_genes <- unique(rownames(deseq_object))
+gostres <- gost(query = c("GO", expressed_genes),
+                organism = "hsapiens", ordered_query = TRUE,
+                multi_query = FALSE, significant = TRUE, exclude_iea = FALSE,
+                measure_underrepresentation = FALSE, evcodes = FALSE,
+                user_threshold = 0.05, correction_method = "g_SCS",
+                domain_scope = "annotated", custom_bg = NULL,
+                numeric_ns = "", sources = NULL, as_short_link = FALSE, highlight = FALSE)
+gost_plot <- gostplot(gostres, capped = FALSE, interactive = FALSE)
+gost_plot
+ggsave(
+  plot = gost_plot,
+  file.path("plots/", "SRP123625_gost_plot.png")
+) # Replace with a plot name relevant to your data
+#TODO output to file as a png
 ```
