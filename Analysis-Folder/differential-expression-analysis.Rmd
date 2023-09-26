@@ -10,8 +10,21 @@ knitr::opts_chunk$set(echo = TRUE)
 if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
+BiocManager::install("topGO")
 BiocManager::install("apeglm")
+BiocManager::install("ALL")
+BiocManager::install("hgu95av2.db")
 install.packages("gprofiler2")
+
+library(topGO)
+library(ALL)
+data(ALL)
+data(geneList)
+affyLib <- paste(annotation(ALL), "db", sep = ".")
+library(package = affyLib, character.only = TRUE)
+
+browseVignettes("topGO")
+
 library(gprofiler2)
 
 library(M3C)
@@ -199,8 +212,12 @@ ggsave(
 
 ### find significantly expressed genes
 ```{r}
-expressed_genes <- unique(rownames(deseq_object))
-gostres <- gost(query = c("GO", expressed_genes),
+
+sig_genes_df <- deseq_df %>%
+  dplyr::filter(threshold == TRUE)
+sig_gene_list <- sig_genes_df$Gene
+
+gostres <- gost(query = c("GO", sig_gene_list),
                 organism = "hsapiens", ordered_query = TRUE,
                 multi_query = FALSE, significant = TRUE, exclude_iea = FALSE,
                 measure_underrepresentation = FALSE, evcodes = FALSE,
@@ -214,4 +231,85 @@ ggsave(
   file.path("plots/", "SRP123625_gost_plot.png")
 ) # Replace with a plot name relevant to your data
 #TODO output to file as a png
+
+```
+
+###do topGO analysis
+```{r}
+
+
+mapped_list <- mapIds(
+  org.Hs.eg.db, # Replace with annotation package for your organism
+  keys = deseq_df$Gene,
+  keytype = "ENSEMBL", # Replace with the type of gene identifiers in your data
+  column = "SYMBOL", # The type of gene identifiers you would like to map to
+  multiVals = "list"
+)
+
+
+top_go_genes <- setNames(as.numeric(deseq_df$padj), mapped_list)
+bf <- length(top_go_genes)
+
+gl <- head(geneList)
+
+tgp <-head(top_go_genes)
+
+top_go_genes <- top_go_genes[!is.na(names(top_go_genes))]
+top_go_genes <- top_go_genes[!is.na(top_go_genes)]
+top_go_genes <- top_go_genes[substr(names(top_go_genes), 1, 2) != "c("]
+af <-length(top_go_genes)
+
+topGoData <- new("topGOdata",
+description = "Simple session", ontology = "BP",
+allGenes = top_go_genes, geneSel = topDiffGenes,
+nodeSize = 10,
+annot = annFUN.org, 
+mapping="org.Hs.eg.db",
+ID = "SYMBOL")
+#attr(topGoData, "allGenes")
+scores <- attr(topGoData, "allScores")
+posScores <- scores[scores > 0]
+```
+### run fisher's exact test and ks/ elimks
+```{r}
+result_fisher <- runTest(topGoData, algorithm = "classic", statistic = "fisher")
+result_fisher 
+
+
+resultKS <- runTest(topGoData, algorithm = "classic", statistic = "ks")
+resultKS.elim <- runTest(topGoData, algorithm = "elim", statistic = "ks")
+
+allRes <- GenTable(topGoData, classicFisher = result_fisher,
+   classicKS = resultKS, elimKS = resultKS.elim,
+   orderBy = "elimKS", ranksOf = "classicFisher", topNodes = 10)
+
+```
+
+### graph generation for topGo 
+```{r}
+ pValue.classic <- score(resultKS)
+ pValue.elim <- score(resultKS.elim)[names(pValue.classic)]
+ gstat <- termStat(topGoData, names(pValue.classic))
+ gSize <- gstat$Annotated / max(gstat$Annotated) * 4
+ 
+ colMap <- function(x){
+   .col <- rep(rev(heat.colors(length(unique(x)))), time = table(x))
+   return(.col[match(1:length(x), order(x))])
+ }
+ 
+ gCol <- colMap(gstat$Significant)
+topGoPlot <-  plot(pValue.classic, pValue.elim, xlab = "p-value classic", ylab = "p-value elim",
+ pch = 19, cex = gSize, col = gCol)
+ 
+ 
+sel.go <- names(pValue.classic)[pValue.elim < pValue.classic]
+ cbind(termStat(topGoData, sel.go),
+ elim = pValue.elim[sel.go],
+ classic = pValue.classic[sel.go])
+ 
+ ggsave(
+  plot = topGoPlot,
+  file.path("plots/", "SRP123625_topGo_plot.png")
+)
+ 
 ```
