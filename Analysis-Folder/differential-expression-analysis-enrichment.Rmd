@@ -130,8 +130,74 @@ head(deseq_df)
 readr::write_tsv(
   deseq_df,
   file.path(
-    results_dir,
+    "results",
     "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name
   )
 )
+
+```
+
+
+# Enrichment analysis
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("GenomicSuperSignature")
+
+```
+
+
+```{r}
+
+library(clusterProfiler)
+library(biomaRt)  # For converting Ensembl IDs to Entrez IDs
+library(clusterProfiler)
+library(GenomicSuperSignature)
+
+# Filter for significantly differentially expressed genes
+sig_genes_df <- deseq_df %>%
+  dplyr::filter(padj < 0.05)  # Adjust threshold as needed
+
+# # Optionally, you can also filter by log2 fold change, for example, |log2FC| > 1
+# sig_genes_df <- sig_genes_df %>%
+#   dplyr::filter(abs(log2FoldChange) > 1)  # Adjust threshold as needed
+
+# # Filter for significantly differentially expressed genes using the threshold column
+# sig_genes_df <- deseq_df %>%
+#   dplyr::filter(threshold == TRUE)
+
+# Extract the list of significant gene names/IDs
+ensembl_ids <- sig_genes_df$Gene
+
+ensembl_ids <- unique(rownames(deseq_object))
+
+
+
+# Map Ensembl IDs to their associated Entrez IDs
+entrez_ids <- mapIds(
+  org.Hs.eg.db, # Replace with annotation package for your organism
+  keys = ensembl_ids,
+  keytype = "ENSEMBL", # Replace with the type of gene identifiers in your data
+  column = "ENTREZID", # The type of gene identifiers you would like to map to
+  multiVals = "list"
+)
+# Check for any NA or missing values and remove them
+# entrez_ids <- na.omit(entrez_ids)
+
+```
+```{r}
+
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = 'hsa',  # Human genes
+                          keyType = 'kegg',
+                          pAdjustMethod = 'BH',  # Benjamini-Hochberg adjustment
+                          qvalueCutoff = 0.05)  # Adjust as needed
+dotplot(kegg_enrich, showCategory = 10) + theme_minimal()
+
+library(DOSE)
+do_res <- enrichDO(gene = entrez_ids, pAdjustMethod = "BH", pvalueCutoff = 0.05)
+dotplot(do_res) + theme_minimal()
+
 ```

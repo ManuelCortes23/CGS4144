@@ -130,8 +130,55 @@ head(deseq_df)
 readr::write_tsv(
   deseq_df,
   file.path(
-    results_dir,
+    "results",
     "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name
   )
 )
+
+```
+
+
+# Heatmap
+
+```{r}
+library(devtools)
+library(ComplexHeatmap)
+```
+
+
+```{r}
+
+# Define the file path
+file_path <- file.path("results", "SRP033566_diff_expr_results.tsv")
+
+# Read the file
+deseq_df_read <- readr::read_tsv(file_path)
+
+# Filter for significantly differentially expressed genes using the threshold column
+sig_genes_df <- deseq_df_read %>%
+  dplyr::filter(threshold == TRUE)
+
+# Extract or organize the expression data
+expression_data <- as.matrix(sig_genes_df[, -1])  # assuming the first column is non-numeric, like gene names
+
+# Create a heatmap
+Heatmap(scaled_data, 
+        name = "z-score",
+        show_row_names = TRUE,
+        show_column_names = TRUE)
+
+```
+```{r}
+
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = 'hsa',  # Human genes
+                          keyType = 'kegg',
+                          pAdjustMethod = 'BH',  # Benjamini-Hochberg adjustment
+                          qvalueCutoff = 0.05)  # Adjust as needed
+dotplot(kegg_enrich, showCategory = 10) + theme_minimal()
+
+library(DOSE)
+do_res <- enrichDO(gene = entrez_ids, pAdjustMethod = "BH", pvalueCutoff = 0.05)
+dotplot(do_res) + theme_minimal()
+
 ```
