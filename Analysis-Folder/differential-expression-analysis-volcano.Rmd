@@ -27,13 +27,13 @@ set.seed(12345)
 
 ```{r}
 # Define the file path to the data directory
-data_dir <- file.path("data", "SRP033566")
+data_dir <- file.path("data", "SRP076307")
 
 # Declare the file path to the gene expression matrix file
-data_file <- file.path(data_dir, "SRP033566.tsv")
+data_file <- file.path(data_dir, "SRP076307.tsv")
 
 # Declare the file path to the metadata file
-metadata_file <- file.path(data_dir, "metadata_SRP033566.tsv")
+metadata_file <- file.path(data_dir, "metadata_SRP076307.tsv")
 
 # Read in metadata TSV file
 metadata <- readr::read_tsv(metadata_file)
@@ -92,48 +92,18 @@ ddset <- DESeqDataSetFromMatrix(
 )
 ```
 
-# Running DESeq
-
-```{r}
-deseq_object <- DESeq(ddset)
-```
-
 # Analysis
 
-anything beyond this is not very stable
+# For DESeq, please see differential-expression-analysis.Rmd.
+# Here, we will simply load the result from it
 
 ```{r}
-deseq_results <- results(deseq_object, contrast = c("Group", "DCM", "CTL"))
 
-deseq_results <- lfcShrink(
-  deseq_object, # The original DESeq2 object after running DESeq()
-  coef = 2, # The log fold change coefficient used in DESeq(); the default is 2.
-  res = deseq_results # The original DESeq2 results table
-)
+# Define the file path
+file_path <- file.path("results", "SRP076307_diff_expr_results.tsv")
 
-head(deseq_results)
-
-# this is of class DESeqResults -- we want a data frame
-deseq_df <- deseq_results %>%
-  # make into data.frame
-  as.data.frame() %>%
-  # the gene names are row names -- let's make them a column for easy display
-  tibble::rownames_to_column("Gene") %>%
-  # add a column for significance threshold results
-  dplyr::mutate(threshold = padj < 0.05) %>%
-  # sort by statistic -- the highest values will be genes with
-  # higher expression in RPL10 mutated samples
-  dplyr::arrange(dplyr::desc(log2FoldChange))
-
-head(deseq_df)
-
-readr::write_tsv(
-  deseq_df,
-  file.path(
-    results_dir,
-    "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name
-  )
-)
+# Read the file
+deseq_df <- readr::read_tsv(file_path)
 
 ```
 

@@ -27,13 +27,13 @@ set.seed(12345)
 
 ```{r}
 # Define the file path to the data directory
-data_dir <- file.path("data", "SRP033566")
+data_dir <- file.path("data", "SRP076307")
 
 # Declare the file path to the gene expression matrix file
-data_file <- file.path(data_dir, "SRP033566.tsv")
+data_file <- file.path(data_dir, "SRP076307.tsv")
 
 # Declare the file path to the metadata file
-metadata_file <- file.path(data_dir, "metadata_SRP033566.tsv")
+metadata_file <- file.path(data_dir, "metadata_SRP076307.tsv")
 
 # Read in metadata TSV file
 metadata <- readr::read_tsv(metadata_file)
@@ -91,94 +91,50 @@ ddset <- DESeqDataSetFromMatrix(
   design = ~Group
 )
 ```
-
-# Running DESeq
-
-```{r}
-deseq_object <- DESeq(ddset)
-```
-
 # Analysis
 
-anything beyond this is not very stable
-
-```{r}
-deseq_results <- results(deseq_object, contrast = c("Group", "DCM", "CTL"))
-
-deseq_results <- lfcShrink(
-  deseq_object, # The original DESeq2 object after running DESeq()
-  coef = 2, # The log fold change coefficient used in DESeq(); the default is 2.
-  res = deseq_results # The original DESeq2 results table
-)
-
-head(deseq_results)
-
-# this is of class DESeqResults -- we want a data frame
-deseq_df <- deseq_results %>%
-  # make into data.frame
-  as.data.frame() %>%
-  # the gene names are row names -- let's make them a column for easy display
-  tibble::rownames_to_column("Gene") %>%
-  # add a column for significance threshold results
-  dplyr::mutate(threshold = padj < 0.05) %>%
-  # sort by statistic -- the highest values will be genes with
-  # higher expression in RPL10 mutated samples
-  dplyr::arrange(dplyr::desc(log2FoldChange))
-
-head(deseq_df)
-
-readr::write_tsv(
-  deseq_df,
-  file.path(
-    "results",
-    "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name
-  )
-)
-
-```
-
+# For DESeq, please see differential-expression-analysis.Rmd.
+# Here, we will simply load the result from it
 
 # Heatmap
 
 ```{r}
 library(devtools)
 library(ComplexHeatmap)
+library(circlize)
+
 ```
 
 
 ```{r}
 
 # Define the file path
-file_path <- file.path("results", "SRP033566_diff_expr_results.tsv")
+file_path <- file.path("results", "SRP076307_diff_expr_results.tsv")
 
 # Read the file
-deseq_df_read <- readr::read_tsv(file_path)
+deseq_df <- readr::read_tsv(file_path)
 
 # Filter for significantly differentially expressed genes using the threshold column
-sig_genes_df <- deseq_df_read %>%
+sig_genes_df <- deseq_df %>%
   dplyr::filter(threshold == TRUE)
+sig_genes_list <- sig_genes_df$Gene
 
-# Extract or organize the expression data
-expression_data <- as.matrix(sig_genes_df[, -1])  # assuming the first column is non-numeric, like gene names
+filtered_gene_matrix <- gene_matrix[rownames(gene_matrix) %in% sig_genes_list, ]
 
-# Create a heatmap
-Heatmap(scaled_data, 
+# Scale the Data
+scaled_filtered_gene_matrix <- t(apply(filtered_gene_matrix, 1, scale))
+
+class(scaled_filtered_gene_matrix)  # Should return "matrix"
+dim(scaled_filtered_gene_matrix)    # Should return the dimensions of the matrix, i.e., number of rows (genes) and columns (samples)
+
+
+Heatmap(scaled_filtered_gene_matrix,
         name = "z-score",
-        show_row_names = TRUE,
-        show_column_names = TRUE)
+        show_row_names = FALSE,
+        show_column_names = FALSE,
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")))
 
 ```
-```{r}
 
-kegg_enrich <- enrichKEGG(gene = entrez_ids,
-                          organism = 'hsa',  # Human genes
-                          keyType = 'kegg',
-                          pAdjustMethod = 'BH',  # Benjamini-Hochberg adjustment
-                          qvalueCutoff = 0.05)  # Adjust as needed
-dotplot(kegg_enrich, showCategory = 10) + theme_minimal()
-
-library(DOSE)
-do_res <- enrichDO(gene = entrez_ids, pAdjustMethod = "BH", pvalueCutoff = 0.05)
-dotplot(do_res) + theme_minimal()
-
-```

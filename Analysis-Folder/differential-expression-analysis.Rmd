@@ -20,6 +20,9 @@ library(magrittr)
 # Human Annotation
 library(org.Hs.eg.db)
 
+
+library(tidyr)
+
 set.seed(12345)
 ```
 
@@ -27,13 +30,13 @@ set.seed(12345)
 
 ```{r}
 # Define the file path to the data directory
-data_dir <- file.path("data", "SRP033566")
+data_dir <- file.path("data", "SRP076307")
 
 # Declare the file path to the gene expression matrix file
-data_file <- file.path(data_dir, "SRP033566.tsv")
+data_file <- file.path(data_dir, "SRP076307.tsv")
 
 # Declare the file path to the metadata file
-metadata_file <- file.path(data_dir, "metadata_SRP033566.tsv")
+metadata_file <- file.path(data_dir, "metadata_SRP076307.tsv")
 
 # Read in metadata TSV file
 metadata <- readr::read_tsv(metadata_file)
@@ -53,21 +56,34 @@ expression_df <- expression_df %>%
 # Check if this is in the same order
 all.equal(colnames(expression_df), metadata$refinebio_accession_code)
 
-#This will add a new column that contains the group to which the samples belong to
+
+# This will add a new column that contains the group to which the samples belong to
 metadata <- metadata %>%
-  dplyr::mutate(Group = stringr::str_extract(refinebio_title, "^[A-Z]{3}"))
+  dplyr::mutate(
+    Group = dplyr::case_when(
+      stringr::str_detect(refinebio_title, "AAJF122|ABAF490|ACAP236") ~ "Control",
+      stringr::str_detect(refinebio_title, "ACGI428") ~ "Type1",
+      stringr::str_detect(refinebio_title, "HP-15041|HP-15085") ~ "Type2",
+      stringr::str_detect(refinebio_title, "ICRH76|ICRH80") ~ "Child",
+      TRUE ~ "Other" # Just in case there are titles that do not match any of the above
+    )
+  )
 
-# Extract unique values of the Group column, but exclude "CTL"
-unique_groups <- setdiff(unique(metadata$Group), "CTL")
+# Extract unique values of the Group column, but exclude "Control" and "Other"
+unique_groups <- setdiff(unique(metadata$Group), c("Control", "Other"))
 
-# Make sure "CTL" is the first level, followed by the other unique values
-ordered_levels <- c("CTL", sort(unique_groups))
+# Make sure "Control" is the first level, followed by the other unique values, and "Other" is the last level
+ordered_levels <- c("Control", sort(unique_groups), "Other")
 
 # Convert the Group column to a factor with these levels
 metadata <- metadata %>%
   dplyr::mutate(Group = factor(Group, levels = ordered_levels))
 
-dplyr::select(metadata, refinebio_title, Group)
+# dplyr::select(metadata, refinebio_title, Group)
+
+metadata %>%
+  dplyr::count(Group) %>%
+  tidyr::as_tibble()
 
 
 ```
@@ -97,21 +113,25 @@ ddset <- DESeqDataSetFromMatrix(
 ```{r}
 deseq_object <- DESeq(ddset)
 ```
+```{r}
+resultsNames(deseq_object)
+```
 
 # Analysis
 
 anything beyond this is not very stable
 
 ```{r}
-deseq_results <- results(deseq_object, contrast = c("Group", "DCM", "CTL"))
+deseq_results <- results(deseq_object, contrast = c("Group", "Type2", "Control"))
 
 deseq_results <- lfcShrink(
-  deseq_object, # The original DESeq2 object after running DESeq()
-  coef = 2, # The log fold change coefficient used in DESeq(); the default is 2.
-  res = deseq_results # The original DESeq2 results table
+  deseq_object,
+  coef = "Group_Type2_vs_Control", # Using the correct coefficient name
+  res = deseq_results
 )
 
 head(deseq_results)
+
 
 # this is of class DESeqResults -- we want a data frame
 deseq_df <- deseq_results %>%
@@ -130,8 +150,8 @@ head(deseq_df)
 readr::write_tsv(
   deseq_df,
   file.path(
-    results_dir,
-    "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name
+    "results",
+    "SRP076307_diff_expr_results_ensembl.tsv" # Replace with a relevant output file name
   )
 )
 ```
