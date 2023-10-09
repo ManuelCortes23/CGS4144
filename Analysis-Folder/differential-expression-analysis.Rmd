@@ -111,8 +111,23 @@ ddset <- DESeqDataSetFromMatrix(
 # Running DESeq
 
 ```{r}
-deseq_object <- DESeq(ddset)
+if (file.exists("deseq_object.RData")) {
+  # Load the existing .RData file
+  load("deseq_object.RData")
+  cat("deseq_object loaded from the .RData file.\n")
+} else {
+  # Generate deseq_object (assuming you have ddset already defined)
+  library(DESeq2)
+  deseq_object <- DESeq(ddset)
+  
+  # Save it to an .RData file
+  save(deseq_object, file="deseq_object.RData")
+  cat("deseq_object generated and saved to the .RData file.\n")
+}
+
 ```
+
+
 ```{r}
 resultsNames(deseq_object)
 ```

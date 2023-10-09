@@ -31,14 +31,14 @@ set.seed(12345)
 ```{r}
 
 # Define the file path
-file_path <- file.path("results", "SRP076307_diff_expr_results.tsv")
+file_path <- file.path("results", "SRP076307_diff_expr_results_ensembl.tsv")
 
 # Read the file
 deseq_df <- readr::read_tsv(file_path)
 
 ```
 
-# Enrichment analysis
+# CLustering analysis
 
 ```{r}
 if (!require("BiocManager", quietly = TRUE))
@@ -52,47 +52,60 @@ BiocManager::install("biomaRt")
 
 ```{r}
 
-library(biomaRt)  # For converting Ensembl IDs to Entrez IDs
+library(biomaRt)  
 library(clusterProfiler)
 
 
 
-# Filter for significantly differentially expressed genes using the threshold column
-sig_genes_df <- deseq_df %>%
-  dplyr::filter(threshold == TRUE)
-entrez_ids <- sig_genes_df$Gene
+# # Filter for significantly differentially expressed genes using the threshold column
+# sig_genes_df <- deseq_df %>%
+#   dplyr::filter(threshold == TRUE)
+# entrez_ids <- sig_genes_df$Gene
+
+# Sorting by the absolute value of log2FoldChange in descending order
+top_genes_df <- deseq_df %>%
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>%
+  dplyr::slice_head(n = 5000)
+
+
+top_genes_id <- top_genes_df$Gene
+
 
 ```
 
+# Load in original data from differential-expression-analysis.Rmd and do some preprocessing
 
+# For this, we will need the gene_matrix variable to exist
 
 ```{r}
 
-kegg_enrich <- enrichKEGG(gene = entrez_ids,
-                          organism = 'hsa',  # Human genes
-                          keyType = 'kegg',
-                          pAdjustMethod = 'BH',  # Benjamini-Hochberg adjustment
-                          qvalueCutoff = 0.05)  # Adjust as needed
-kegg_enrich_df <- as.data.frame(kegg_enrich)
-head(kegg_enrich)
-write.csv(kegg_enrich_df, "results/kegg_enrichment_results.csv", row.names = FALSE)
+top_genes_matrix <- gene_matrix[top_genes_id,]
 
+scaled_matrix <- t(scale(top_genes_matrix))
 
-dotplot(kegg_enrich, showCategory = 10) + theme_minimal()
+kmeans_result <- kmeans(scaled_matrix, centers = 3)
+
+pca_result <- prcomp(scaled_matrix, scale.=FALSE)
+plot(pca_result$x[,1:2], col=kmeans_result$cluster, pch = 16, xlab = "PC1", ylab = "PC2")
+
 ```
-
 
 ```{r}
-library(DOSE)
-do_res <- enrichDO(gene = entrez_ids, pAdjustMethod = "BH", pvalueCutoff = 0.05)
 
-# Convert the enrichment object to a data frame
-do_res_df <- as.data.frame(do_res)
-# View the top rows of the table
-head(do_res_df)
-write.csv(do_res_df, "results/do_enrichment_results.csv", row.names = FALSE)
+# 1. Calculate the distance matrix
+dist_matrix <- dist(scaled_matrix, method = "euclidean")
 
+# 2. Perform Hierarchical Clustering
+hclust_result <- hclust(dist_matrix, method = "complete")
 
-dotplot(do_res) + theme_minimal()
+# 3. Visualize the Dendrogram
+plot(hclust_result)
+
+# 4. Cut the dendrogram to form a specific number of clusters (e.g., 3 clusters)
+clusters <- cutree(hclust_result, k = 3)
+
+# 5. Visualize the clusters on the PCA plot (assuming `pca_result` was computed earlier)
+plot(pca_result$x[,1:2], col=clusters, pch=16, xlab="PC1", ylab="PC2")
 
 ```
+
