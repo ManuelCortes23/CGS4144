@@ -3,10 +3,11 @@
 **/.DS_Store
 
 # R specific ignores
-.Rhistory
-.RData
-.Ruserdata
-.Rproj.user/
+**/.Rhistory
+**/.RData
+**/.Ruserdata
+**/.Rproj.user/
+
 
 # Ignore R project files (optional, depending on whether you want them included)
 *.Rproj
@@ -40,3 +41,5 @@ dist/
 
 # Ignore build directory (Python setup.py)
 build/
+Analysis-Folder/.RDataTmp
+Analysis-Folder/.Rhistory

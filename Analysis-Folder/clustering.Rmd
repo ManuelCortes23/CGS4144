@@ -1,0 +1,98 @@
+---
+title: "differential expression analysis"
+author: "Manuel Cortes"
+date: "2023-09-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Attach the DESeq2 library
+library(DESeq2)
+
+# Attach the ggplot2 library for plotting
+library(ggplot2)
+
+# We will need this so we can use the pipe: %>%
+library(magrittr)
+
+# Human Annotation
+library(org.Hs.eg.db)
+
+set.seed(12345)
+```
+
+# Analysis
+
+# For DESeq, please see differential-expression-analysis.Rmd.
+# Here, we will simply load the result from it
+
+```{r}
+
+# Define the file path
+file_path <- file.path("results", "SRP076307_diff_expr_results.tsv")
+
+# Read the file
+deseq_df <- readr::read_tsv(file_path)
+
+```
+
+# Enrichment analysis
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("clusterProfiler")
+BiocManager::install("biomaRt")
+
+```
+
+
+```{r}
+
+library(biomaRt)  # For converting Ensembl IDs to Entrez IDs
+library(clusterProfiler)
+
+
+
+# Filter for significantly differentially expressed genes using the threshold column
+sig_genes_df <- deseq_df %>%
+  dplyr::filter(threshold == TRUE)
+entrez_ids <- sig_genes_df$Gene
+
+```
+
+
+
+```{r}
+
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = 'hsa',  # Human genes
+                          keyType = 'kegg',
+                          pAdjustMethod = 'BH',  # Benjamini-Hochberg adjustment
+                          qvalueCutoff = 0.05)  # Adjust as needed
+kegg_enrich_df <- as.data.frame(kegg_enrich)
+head(kegg_enrich)
+write.csv(kegg_enrich_df, "results/kegg_enrichment_results.csv", row.names = FALSE)
+
+
+dotplot(kegg_enrich, showCategory = 10) + theme_minimal()
+```
+
+
+```{r}
+library(DOSE)
+do_res <- enrichDO(gene = entrez_ids, pAdjustMethod = "BH", pvalueCutoff = 0.05)
+
+# Convert the enrichment object to a data frame
+do_res_df <- as.data.frame(do_res)
+# View the top rows of the table
+head(do_res_df)
+write.csv(do_res_df, "results/do_enrichment_results.csv", row.names = FALSE)
+
+
+dotplot(do_res) + theme_minimal()
+
+```

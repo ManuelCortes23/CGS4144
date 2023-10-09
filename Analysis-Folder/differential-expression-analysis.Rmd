@@ -155,3 +155,33 @@ readr::write_tsv(
   )
 )
 ```
+
+
+```{r}
+# Extract the list of significant gene names/IDs
+ensembl_ids <- deseq_df$Gene
+
+# Map Ensembl IDs to their associated Entrez IDs, returning only the first mapping when multiple exist
+entrez_ids <- mapIds(
+  org.Hs.eg.db,
+  keys = ensembl_ids,
+  keytype = "ENSEMBL",
+  column = "ENTREZID",
+  multiVals = "first"
+)
+
+# Replace the 'Gene' column in deseq_df with Entrez IDs
+deseq_df$Gene <- entrez_ids
+
+# Write the modified dataframe to a TSV file
+readr::write_tsv(
+  deseq_df,
+  file.path(
+    "results",
+    "SRP076307_diff_expr_results.tsv" # Replace with a relevant output file name if necessary
+  )
+)
+
+
+
+```

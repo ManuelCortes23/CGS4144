@@ -27,13 +27,13 @@ set.seed(12345)
 
 ```{r}
 # Define the file path to the data directory
-data_dir <- file.path("data", "SRP076307")
+data_dir <- file.path("data", "SRP033566")
 
 # Declare the file path to the gene expression matrix file
-data_file <- file.path(data_dir, "SRP076307")
+data_file <- file.path(data_dir, "SRP033566")
 
 # Declare the file path to the metadata file
-metadata_file <- file.path(data_dir, "metadata_SRP076307.tsv")
+metadata_file <- file.path(data_dir, "metadata_SRP033566.tsv")
 
 # Read in metadata TSV file
 metadata <- readr::read_tsv(metadata_file)
@@ -135,7 +135,36 @@ readr::write_tsv(
   deseq_df,
   file.path(
     results_dir,
-    "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name
+    "SRP033566_diff_expr_results_ensembl.tsv" # Replace with a relevant output file name
   )
 )
+```
+
+```{r}
+# Extract the list of significant gene names/IDs
+ensembl_ids <- deseq_df$Gene
+
+# Map Ensembl IDs to their associated Entrez IDs, returning only the first mapping when multiple exist
+entrez_ids <- mapIds(
+  org.Hs.eg.db,
+  keys = ensembl_ids,
+  keytype = "ENSEMBL",
+  column = "ENTREZID",
+  multiVals = "first"
+)
+
+# Replace the 'Gene' column in deseq_df with Entrez IDs
+deseq_df$Gene <- entrez_ids
+
+# Write the modified dataframe to a TSV file
+readr::write_tsv(
+  deseq_df,
+  file.path(
+    "results",
+    "SRP033566_diff_expr_results.tsv" # Replace with a relevant output file name if necessary
+  )
+)
+
+
+
 ```
