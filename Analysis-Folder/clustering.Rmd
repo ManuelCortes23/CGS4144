@@ -8,6 +8,12 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+
+# BiocManager::install("clusterProfiler")
+# BiocManager::install("biomaRt")
+
 # Attach the DESeq2 library
 library(DESeq2)
 
@@ -20,13 +26,60 @@ library(magrittr)
 # Human Annotation
 library(org.Hs.eg.db)
 
+
+library(biomaRt)  
+library(clusterProfiler)
+
+
 set.seed(12345)
+
+
 ```
 
 # Analysis
 
-# For DESeq, please see differential-expression-analysis.Rmd.
+# Please see differential-expression-analysis.Rmd to load all necessary variables
 # Here, we will simply load the result from it
+
+#First we will look at the top 5000 genes with the most variance.
+
+
+```{r}
+
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order and get the top 5000
+top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:5000]
+
+# Extract the top 5000 genes
+top_genes_df <- expression_df[top_genes_indices, ]
+
+# Standardize the Data
+scaled_matrix <- t(scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+```
+
+```{r}
+# K-means clustering
+kmeans_result <- kmeans(scaled_matrix, centers=3)
+
+# Visualization using PCA
+pca_result <- prcomp(scaled_matrix)
+plot(pca_result$x[,1:2], col=kmeans_result$cluster, pch=16, 
+     xlab="PC1", ylab="PC2", main="K-means Clustering of Top 5000 Genes")
+
+```
+```{r}
+# Compute and plot wss for k = 1 to k = 10
+wss <- sapply(1:10, function(k){
+  kmeans(scaled_matrix, centers=k)$tot.withinss
+})
+
+plot(1:10, wss, type="b", pch=19, frame=FALSE, 
+     xlab="Number of clusters K", 
+     ylab="Total within-clusters sum of squares")
+
+```
 
 ```{r}
 
@@ -36,26 +89,6 @@ file_path <- file.path("results", "SRP076307_diff_expr_results_ensembl.tsv")
 # Read the file
 deseq_df <- readr::read_tsv(file_path)
 
-```
-
-# CLustering analysis
-
-```{r}
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-
-BiocManager::install("clusterProfiler")
-BiocManager::install("biomaRt")
-
-```
-
-
-```{r}
-
-library(biomaRt)  
-library(clusterProfiler)
-
-
 
 # # Filter for significantly differentially expressed genes using the threshold column
 # sig_genes_df <- deseq_df %>%
@@ -63,37 +96,51 @@ library(clusterProfiler)
 # entrez_ids <- sig_genes_df$Gene
 
 # Sorting by the absolute value of log2FoldChange in descending order
-top_genes_df <- deseq_df %>%
+top_de_genes <- deseq_df %>%
   dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>%
   dplyr::slice_head(n = 5000)
 
+# Extracting gene IDs from the top differentially expressed genes
+top_de_genes_id <- top_de_genes$Gene
 
-top_genes_id <- top_genes_df$Gene
+# Subsetting the main expression matrix to only include rows for the top differentially expressed genes using row names
+top_de_genes_df <- expression_df[rownames(expression_df) %in% top_de_genes_id,]
+# top_de_genes_df <- gene_matrix[top_de_genes_id,]
 
+# Standardizing (scaling) the expression data for top differentially expressed genes
+scaled_matrix_de <- t(scale(top_de_genes_df))
 
 ```
 
-# Load in original data from differential-expression-analysis.Rmd and do some preprocessing
-
-# For this, we will need the gene_matrix variable to exist
+# Clustering analysis with K means
 
 ```{r}
 
-top_genes_matrix <- gene_matrix[top_genes_id,]
+kmeans_result_de <- kmeans(scaled_matrix_de, centers = 4)
 
-scaled_matrix <- t(scale(top_genes_matrix))
-
-kmeans_result <- kmeans(scaled_matrix, centers = 3)
-
-pca_result <- prcomp(scaled_matrix, scale.=FALSE)
-plot(pca_result$x[,1:2], col=kmeans_result$cluster, pch = 16, xlab = "PC1", ylab = "PC2")
+pca_result_de <- prcomp(scaled_matrix_de, scale.=FALSE)
+plot(pca_result_de$x[,1:2], col=kmeans_result_de$cluster, pch = 16, xlab = "PC1", ylab = "PC2")
 
 ```
+
+```{r}
+# Compute and plot wss for k = 1 to k = 10
+wss_de <- sapply(1:10, function(k){
+  kmeans(scaled_matrix_de, centers=k)$tot.withinss
+})
+
+plot(1:10, wss_de, type="b", pch=19, frame=FALSE, 
+     xlab="Number of clusters K", 
+     ylab="Total within-clusters sum of squares")
+
+```
+
+# Trying out hclust
 
 ```{r}
 
 # 1. Calculate the distance matrix
-dist_matrix <- dist(scaled_matrix, method = "euclidean")
+dist_matrix <- dist(scaled_matrix_de, method = "euclidean")
 
 # 2. Perform Hierarchical Clustering
 hclust_result <- hclust(dist_matrix, method = "complete")
@@ -102,10 +149,43 @@ hclust_result <- hclust(dist_matrix, method = "complete")
 plot(hclust_result)
 
 # 4. Cut the dendrogram to form a specific number of clusters (e.g., 3 clusters)
-clusters <- cutree(hclust_result, k = 3)
+clusters <- cutree(hclust_result, k = 4)
 
 # 5. Visualize the clusters on the PCA plot (assuming `pca_result` was computed earlier)
-plot(pca_result$x[,1:2], col=clusters, pch=16, xlab="PC1", ylab="PC2")
+plot(pca_result_de$x[,1:2], col=clusters, pch=16, xlab="PC1", ylab="PC2")
+
+```
+```{r}
+library(pheatmap)
+
+# Create the annotations data frame
+annotations <- data.frame(
+  Kmeans_Cluster = kmeans_result_de$cluster
+  # Hierarchical_Cluster = hclust_result_clusters, # replace with actual data
+  # Sample_Groups = sample_groups_assignment1      # replace with actual data
+  # ... add other clustering results as needed
+)
+
+# Draw the heatmap
+pheatmap(
+  scaled_matrix_de,
+  annotation_col = annotations,
+  show_rownames = FALSE,
+  show_colnames = TRUE,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  main = "Heatmap of Top 5,000 Genes"
+)
+
 
 ```
 
+
+```{r}
+any(is.na(scaled_matrix_de))
+any(is.infinite(scaled_matrix_de))
+nrow(annotations) == ncol(scaled_matrix_de)
+
+
+```
