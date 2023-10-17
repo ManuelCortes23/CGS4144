@@ -31,7 +31,7 @@ library(biomaRt)
 library(clusterProfiler)
 
 
-set.seed(12345)
+set.seed(123)
 
 
 ```
@@ -45,7 +45,6 @@ set.seed(12345)
 
 
 ```{r}
-
 # Calculate variance for each gene (row-wise)
 gene_variance <- apply(expression_df, 1, var)
 
@@ -53,15 +52,18 @@ gene_variance <- apply(expression_df, 1, var)
 top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:5000]
 
 # Extract the top 5000 genes
-top_genes_df <- expression_df[top_genes_indices, ]
+top_genes_df <- expression_df[top_genes_indices,]
 
 # Standardize the Data
-scaled_matrix <- t(scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+scaled_matrix <- (scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
 ```
 
 ```{r}
+
+set.seed(123)
+
 # K-means clustering
-kmeans_result <- kmeans(scaled_matrix, centers=3)
+kmeans_result <- kmeans(scaled_matrix, centers=4)
 
 # Visualization using PCA
 pca_result <- prcomp(scaled_matrix)
@@ -69,6 +71,8 @@ plot(pca_result$x[,1:2], col=kmeans_result$cluster, pch=16,
      xlab="PC1", ylab="PC2", main="K-means Clustering of Top 5000 Genes")
 
 ```
+# This is for analyzing the number of clusters to use for k means. the analysis will differ for different clustering algorithms
+
 ```{r}
 # Compute and plot wss for k = 1 to k = 10
 wss <- sapply(1:10, function(k){
@@ -80,7 +84,166 @@ plot(1:10, wss, type="b", pch=19, frame=FALSE,
      ylab="Total within-clusters sum of squares")
 
 ```
+```{r}
+# 1. Merge clustering results with metadata
+# Assuming the row names of scaled_matrix are the SAMPLE_NAME
+result_df <- data.frame(refinebio_accession_code = rownames(scaled_matrix), 
+                        Cluster = kmeans_result$cluster)
+merged_df <- merge(result_df, metadata, by="refinebio_accession_code")
 
+# Order merged_df by the order of samples in PCA result
+merged_df <- merged_df[match(rownames(pca_result$x), merged_df$refinebio_accession_code), ]
+
+# 2. Visualize the PCA results colored by clusters but shaped by metadata GROUP
+# # Convert the GROUP column to a factor for using different plotting symbols
+merged_df$Group <- as.factor(merged_df$Group)
+
+ggplot(data = merged_df, aes(x = pca_result$x[,1], y = pca_result$x[,2], color = as.factor(Cluster), shape = Group)) +
+  geom_point(size = 3) +
+  scale_shape_manual(values = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 15, 17)) +
+  labs(title = "K-means Clustering vs Predefined Groups", x = "PC1", y = "PC2") +
+  theme_minimal()
+
+
+```
+
+```{r}
+# Define the numbers of top genes we want to use for clustering
+top_genes_numbers <- c(10, 100, 1000, 5000, 10000)
+
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order
+sorted_genes_indices <- order(gene_variance, decreasing = TRUE)
+
+# Initialize an empty list to store the kmeans results
+kmeans_results <- list()
+
+set.seed(123)
+
+# Iterate over each top_genes_number and perform clustering
+for (n in top_genes_numbers) {
+  
+  # Extract the top genes
+  top_genes_df <- expression_df[sorted_genes_indices[1:n], ]
+  
+  # Standardize the Data
+  scaled_matrix <- (scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+  
+  # K-means clustering
+  kmeans_results[[paste0("Top", n)]] <- kmeans(scaled_matrix, centers=4)
+}
+
+# Now, kmeans_results is a list with each element being the result of kmeans for a particular number of top genes
+
+```
+
+```{r}
+# Initialize an empty data frame to store the clustering results
+alluvial_data <- data.frame(Sample = colnames(expression_df))
+
+# Iterate over each clustering result in kmeans_results and add it to the data frame
+for (name in names(kmeans_results)) {
+  alluvial_data[[name]] <- kmeans_results[[name]]$cluster
+}
+
+# View the first few rows to ensure it looks correct
+head(alluvial_data)
+
+```
+```{r}
+library(ggplot2)
+library(ggalluvial)
+
+ggplot(data = alluvial_data, 
+       aes(axis1 = Top10, axis2 = Top100, axis3 = Top1000, axis4 = Top5000, axis5 = Top10000)) +
+  geom_alluvium(aes(fill = factor(Top10))) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() +
+  labs(title = "Changes in Cluster Memberships Across Different Clustering Setups")
+
+```
+```{r}
+
+# Create contingency table
+contingency_table <- table(merged_df$Cluster, merged_df$Group)
+
+# Removing the 'Other' column
+contingency_table <- contingency_table[, -which(colnames(contingency_table) == "Other")]
+
+
+# Perform chi-squared test
+test_result <- chisq.test(contingency_table)
+
+# Store p-value
+p_value <- test_result$p.value
+
+ggplot(data = as.data.frame(as.table(contingency_table)), aes(Var1, Var2)) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  geom_text(aes(label = sprintf("%d", Freq)), vjust = 1) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  theme_minimal() +
+  labs(x = "Cluster", y = "Group", fill = "Count")
+
+
+contingency_table
+
+```
+
+```{r}
+# Define the number of genes for each iteration
+num_genes <- c(10, 100, 1000, 5000, 10000)
+
+# Initialize an empty list to store the kmeans results
+kmeans_results <- list()
+
+for (genes in num_genes) {
+  # Extract top genes by variance
+  top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:genes]
+  top_genes_df <- expression_df[top_genes_indices,]
+
+  # Standardize the Data
+  scaled_matrix <- (scale(t(top_genes_df)))
+
+  # K-means clustering
+  set.seed(123)
+  kmeans_results[[as.character(genes)]] <- kmeans(scaled_matrix, centers=4)
+}
+
+# Initialize vectors to store p-values
+p_values <- numeric()
+adjusted_p_values <- numeric()
+
+for (genes in names(kmeans_results)) {
+  # Merge with metadata
+  result_df <- data.frame(refinebio_accession_code = rownames(scaled_matrix),
+                          Cluster = kmeans_results[[genes]]$cluster)
+  merged_df <- merge(result_df, metadata, by="refinebio_accession_code")
+
+  # Create contingency table and perform chi-squared test
+  contingency_table <- table(merged_df$Cluster, merged_df$Group)
+  contingency_table <- contingency_table[, -which(colnames(contingency_table) == "Other")]
+
+  test_result <- chisq.test(contingency_table)
+
+  # Store p-values
+  p_values <- c(p_values, test_result$p.value)
+}
+
+# Adjust p-values for multiple hypothesis testing
+adjusted_p_values <- p.adjust(p_values, method = "BH")
+
+results_table <- data.frame(Number_of_Genes = num_genes,
+                            Unadjusted_P_Value = p_values,
+                            Adjusted_P_Value = adjusted_p_values)
+
+print(results_table)
+```
+# Misc DE Stuff
+
+# This part really is not needed for this assignment
 ```{r}
 
 # Define the file path
@@ -122,7 +285,27 @@ pca_result_de <- prcomp(scaled_matrix_de, scale.=FALSE)
 plot(pca_result_de$x[,1:2], col=kmeans_result_de$cluster, pch = 16, xlab = "PC1", ylab = "PC2")
 
 ```
+```{r}
+# 1. Merge clustering results with metadata
+# Assuming the row names of scaled_matrix are the SAMPLE_NAME
+result_df <- data.frame(refinebio_accession_code = rownames(scaled_matrix_de), 
+                        Cluster = kmeans_result_de$cluster)
+merged_df <- merge(result_df, metadata, by="refinebio_accession_code")
 
+# Order merged_df by the order of samples in PCA result
+merged_df <- merged_df[match(rownames(pca_result$x), merged_df$refinebio_accession_code), ]
+
+# 2. Visualize the PCA results colored by clusters but shaped by metadata GROUP
+# # Convert the GROUP column to a factor for using different plotting symbols
+merged_df$Group <- as.factor(merged_df$Group)
+
+ggplot(data = merged_df, aes(x = pca_result$x[,1], y = pca_result$x[,2], color = as.factor(Cluster), shape = Group)) +
+  geom_point(size = 3) +
+  scale_shape_manual(values = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 15, 17)) +
+  labs(title = "K-means Clustering vs Predefined Groups", x = "PC1", y = "PC2") +
+  theme_minimal()
+
+```
 ```{r}
 # Compute and plot wss for k = 1 to k = 10
 wss_de <- sapply(1:10, function(k){

@@ -127,7 +127,6 @@ if (file.exists("deseq_object.RData")) {
 
 ```
 
-
 ```{r}
 resultsNames(deseq_object)
 ```
@@ -170,7 +169,6 @@ readr::write_tsv(
   )
 )
 ```
-
 
 ```{r}
 # Extract the list of significant gene names/IDs
