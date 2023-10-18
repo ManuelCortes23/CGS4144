@@ -1,0 +1,242 @@
+---
+title: "differential expression analysis"
+author: "Manuel Cortes"
+date: "2023-09-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+
+# BiocManager::install("clusterProfiler")
+# BiocManager::install("biomaRt")
+
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ConsensusClusterPlus")
+BiocManager::install("ComplexHeatmap")
+
+library(ConsensusClusterPlus)
+library(dplyr)
+library(mclust)
+
+# Attach the DESeq2 library
+library(DESeq2)
+library(ggalluvial)
+
+# Attach the ggplot2 library for plotting
+library(ggplot2)
+
+# We will need this so we can use the pipe: %>%
+library(magrittr)
+
+# Human Annotation
+library(org.Hs.eg.db)
+library(r2r)
+library(pheatmap)
+library(ComplexHeatmap)
+
+
+
+#library(biomaRt)  
+#library(clusterProfiler)
+
+
+set.seed(12345)
+
+
+```
+
+# Analysis
+
+# Please see differential-expression-analysis.Rmd to load all necessary variables
+# Here, we will simply load the result from it
+
+#First we will look at the top 5000 genes with the most variance.
+
+
+```{r}
+
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order and get the top 5000
+top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:5000]
+
+# Extract the top 5000 genes
+top_genes_df <- expression_df[top_genes_indices, ]
+
+# Standardize the Data
+scaled_matrix <- t(scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+```
+
+
+
+```{r}
+
+# Define the file path
+file_path <- file.path("results", "SRP076307_diff_expr_results_ensembl.tsv")
+
+# Read the file
+deseq_df <- read.delim(file_path)
+
+
+# # Filter for significantly differentially expressed genes using the threshold column
+# sig_genes_df <- deseq_df %>%
+#   dplyr::filter(threshold == TRUE)
+# entrez_ids <- sig_genes_df$Gene
+
+# Sorting by the absolute value of log2FoldChange in descending order
+
+get_n_genes <- function(num_genes){
+  top_de_genes <- deseq_df %>%
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>%
+  dplyr::slice_head(n = num_genes)
+
+# Extracting gene IDs from the top differentially expressed genes
+top_de_genes_id <- top_de_genes$Gene
+
+# Subsetting the main expression matrix to only include rows for the top differentially expressed genes using row names
+top_de_genes_df <- expression_df[rownames(expression_df) %in% top_de_genes_id,]
+# top_de_genes_df <- gene_matrix[top_de_genes_id,]
+
+# Standardizing (scaling) the expression data for top differentially expressed genes
+scaled_matrix_de <- t(scale(top_de_genes_df))
+return (scaled_matrix_de)
+}
+
+
+
+```
+
+```{r}
+
+ccp <- ConsensusClusterPlus(get_n_genes(1000), maxK = 4)
+consensus_matrix = ccp[[4]]$consensusMatrix
+
+
+```
+
+
+
+
+```{r}
+nGenes <- get_n_genes(1000)
+results <- list()
+length(colnames(nGenes))
+for (col_name in  colnames(nGenes)) { 
+  results <- append(results, rownames(nGenes)[which.max(nGenes[,col_name])])
+}
+i <- 1
+subset_metadata <- data.frame()
+for(name in metadata$refinebio_accession_code){
+  j <- 1
+  for(val in results){
+    if(name == val){
+      subset_metadata <- rbind(subset_metadata, data.frame( "Code" =metadata[i, ]$refinebio_accession_code, 
+                                                            "Group" =metadata[i, ]$Group,
+                                                            "val"= j))
+    }
+    j <- j+1
+  }
+  i <- i + 1
+}
+subset_metadata <-subset_metadata %>%
+  arrange(val)
+```
+
+```{r}
+consensus_class = ccp[[4]]$consensusClass
+
+group_colors <- c("1" = "red", "2" = "blue", "3" = "green",  "4" = "purple","5"  = "orange", "6" = "yellow", "7"="cyan")
+group_2_colors <- c("Control" = "red", "Type1" = "blue", "Type2" = "green",  "Child" = "purple")
+row_ha = rowAnnotation(Consensus = consensus_class,
+                       Generic = subset_metadata$Group,
+                       col = list(Consensus = group_colors, 
+                                  Generic = group_2_colors))
+ht1 = Heatmap(consensus_matrix, name = "ConsensusValue", right_annotation = row_ha)
+
+ht1
+
+
+```
+
+```{r}
+
+```
+
+
+```{r}
+# after quite a bit of experimentation it seems like 3 works best
+# does not work with 10 genes, lowest value has to be 100
+
+kVal <- 7
+
+gene_lists <- list(
+get_n_genes(100),
+get_n_genes(500),
+get_n_genes(1000),
+get_n_genes(5000),
+get_n_genes(10000))
+
+ccpList <- list()
+
+for(gene_list in gene_lists){
+   ccpList <- append(ccpList, list(ConsensusClusterPlus(d=gene_list, maxK = kVal, title= paste(length(gene_list),"Genes"))[[kVal]]$consensusClass))
+}
+
+
+```
+
+```{r}
+
+
+iterator <- 1
+gene_num <- list(100, 500, 1000, 5000, 10000)
+clusterDF <- data.frame()
+for(ccp in ccpList){
+  hm <- hashmap()
+  for(value in ccp){
+    clusterTot <- hm[[value]] 
+    if(is.null(clusterTot)){
+        hm[[value]] <- 1
+    }
+    else {
+        hm[[value]] <- clusterTot +1
+    }
+  }
+  
+  clusterDF <- rbind(clusterDF, data.frame("Method" = "Consensus", 
+             "Cluster" = as.factor(unlist(keys(hm))),
+             "Genes" =  as.factor(gene_num[[iterator]]), 
+             "Freq" =unlist(values(hm))/gene_num[[iterator]] ))
+  
+
+ iterator <- iterator + 1
+}
+
+
+```
+
+```{r}
+ggplot(clusterDF,
+     aes(y = Freq, axis1 = Genes, axis2 = Cluster)) +
+  geom_alluvium(aes(fill = Cluster), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "black", color = "grey") +
+  geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("Genes", "Cluster"), expand = c(.05, .05)) +
+  scale_fill_brewer(type = "Seq", palette = "Set1") +
+
+ggtitle("Impacts of Gene Set Length on Cluster") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+
+#pheatmap(deseq_df$log2FoldChange, cluster_rows = TRUE, cluster_cols = TRUE)
+
+```
