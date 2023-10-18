@@ -1,3 +1,9 @@
+---
+title: "clustering-pam"
+author: "Christian Kearns"
+date: "2023-10-18"
+output: html_document
+---
 ```{r setup, include=FALSE}
 
 knitr::opts_chunk$set(echo = TRUE)
@@ -30,7 +36,7 @@ library(cluster)
 library(ggalluvial)
 
 
-set.seed(12345)
+set.seed(123)
 
 
 ```
@@ -62,10 +68,14 @@ scaled_matrix <- t(scale(t(top_genes_df))) # Transpose is needed because scale o
 
 ```{r}
 
+set.seed(123)
+
 k <- 3
 
 
 pam_result <- pam(scaled_matrix, k)
+
+
 
 # Cluster assignments
 cluster_assignments <- pam_result$clustering
@@ -75,4 +85,94 @@ cluster_medoids <- pam_result$medoids
 
 # Number of clusters
 num_clusters <- length(unique(cluster_assignments))
+```
+
+```{r}
+# BiocManager::install("factoextra")
+library(factoextra)
+# summary(pam_result)
+fviz_cluster(pam_result, geom = "point", show.clust.cent = FALSE)
+```
+
+# For different k values
+```{r}
+# PAM Clustering
+k_values <- c(2, 3, 4)
+
+cluster_results <- list()
+
+for (k in k_values) {
+  set.seed(123) 
+  pam_result <- pam(scaled_matrix, k)
+  cluster_assignments <- pam_result$clustering
+  cluster_results[[as.character(k)]] <- cluster_assignments
+}
+
+# Number of clusters for each k value
+num_clusters <- sapply(cluster_results, function(x) length(unique(x)))
+
+# Compare cluster memberships for different k values
+for (k in k_values) {
+  cat(paste("Number of clusters for k =", k, ":", num_clusters[as.character(k)], "\n"))
+}
+
+```
+For different #s of genes
+```{r}
+# Define the numbers of top genes we want to use for clustering
+top_genes_numbers <- c(10, 100, 1000, 5000, 10000)
+
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order
+sorted_genes_indices <- order(gene_variance, decreasing = TRUE)
+
+# Initialize a list to store clustering results
+pams_results <- list()
+
+for (size in top_genes_numbers) {
+  # Subset the top genes
+  top_genes_df_subset <- expression_df[sorted_genes_indices[1:size], ]
+
+  # Standardize Data
+  scaled_matrix <- (scale(t(top_genes_df)))
+  
+  # Perform PAM Clustering
+  set.seed(123)
+  k <- 3
+  this_pam_result <- pam(scaled_matrix, k)
+  pams_results[[paste0("Top",n)]] <- pam(scaled_matrix, k)
+  
+  # Error in paste0("Top", n) : 
+  # cannot coerce type 'closure' to vector of type 'character'
+  
+  # ^^^ Passing a function to a vector...
+}
+```
+
+# Alluvial Diagram
+
+```{r}
+
+# Define the levels for the alluvial plot
+levels <- as.character(top_genes_numbers)
+
+# Initialize data for the alluvial plot
+alluvial_data <- data.frame(Sample = colnames(expression_df))
+
+# Loop through clustering results and update counts
+for (name in names(pams_results)) {
+  alluvial_data[[name]] <- pams_results[[name]]$cluster
+}
+
+# Create the alluvial plot
+ggplot(data = alluvial_data, 
+       aes(axis1 = Top10, axis2 = Top100, axis3 = Top1000, axis4 = Top5000, axis5 = Top10000)) +
+  geom_alluvium(aes(fill = factor(Top10))) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() +
+  labs(title = "PAM Clustering Memberships Across Different Setups")
+
 ```
