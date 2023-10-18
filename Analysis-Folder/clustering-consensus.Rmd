@@ -1,0 +1,75 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# BiocManager::install("clusterProfiler")
+# BiocManager::install("biomaRt")
+# BiocManager::install("ConsensusClusterPlus")
+
+# Attach the DESeq2 library
+library(DESeq2)
+
+# Attach the ggplot2 library for plotting
+library(ggplot2)
+
+# We will need this so we can use the pipe: %>%
+library(magrittr)
+
+# Human Annotation
+library(org.Hs.eg.db)
+
+
+library(biomaRt)  
+library(clusterProfiler)
+library(ConsensusClusterPlus)
+
+
+
+set.seed(12345)
+
+
+```
+
+# Analysis
+
+# Please see differential-expression-analysis.Rmd to load all necessary variables
+# Here, we will simply load the result from it
+
+#First we will look at the top 5000 genes with the most variance.
+
+
+```{r}
+
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order and get the top 5000
+top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:5000]
+
+# Extract the top 5000 genes
+top_genes_df <- expression_df[top_genes_indices, ]
+
+# Standardize the Data
+scaled_matrix <- t(scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+```
+
+# consensus cluster plus main plots
+```{r}
+# ConsensusClusterPlus
+cc <- ConsensusClusterPlus(scaled_matrix, maxK = 6, reps = 100, pItem = 0.8, pFeature = 1, clusterAlg = "hc", distance = "pearson")
+```
+# icl output
+```{r}
+icl <- calcICL(cc)
+icl
+icl[["clusterConsensus"]]
+```
+# Attempt at alluvial plot
+```{r}
+icldf <- as.data.frame(icl[["clusterConsensus"]])
+icldf
+ggplot(data = icldf,
+       aes(x = cluster,y = clusterConsensus, alluvium = k))
+```
+
