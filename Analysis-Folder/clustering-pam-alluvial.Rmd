@@ -1,0 +1,143 @@
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# BiocManager::install("clusterProfiler")
+# BiocManager::install("biomaRt")
+# BiocManager::install("ConsensusClusterPlus")
+# BiocManager::install("cluster")
+# BiocManager::install("ggalluvial")
+
+# Attach the DESeq2 library
+library(DESeq2)
+
+# Attach the ggplot2 library for plotting
+library(ggplot2)
+
+# We will need this so we can use the pipe: %>%
+library(magrittr)
+
+# Human Annotation
+library(org.Hs.eg.db)
+
+
+library(biomaRt)  
+library(clusterProfiler)
+library(ConsensusClusterPlus)
+library(cluster)
+library(ggalluvial)
+
+
+set.seed(12345)
+
+
+```
+
+# Analysis
+
+# Please see differential-expression-analysis.Rmd to load all necessary variables
+
+# Here, we will simply load the result from it
+
+#First we will look at the top 5000 genes with the most variance.
+
+```{r}
+
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order and get the top 5000
+top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:5000]
+
+# Extract the top 5000 genes
+top_genes_df <- expression_df[top_genes_indices, ]
+
+# Standardize the Data
+scaled_matrix <- (scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+```
+
+# PAM Clustering
+
+```{r}
+
+k <- 3
+
+
+pam_result <- pam(scaled_matrix, k)
+
+# Cluster assignments
+cluster_assignments <- pam_result$clustering
+
+# Cluster medoids (representative samples)
+cluster_medoids <- pam_result$medoids
+
+# Number of clusters
+num_clusters <- length(unique(cluster_assignments))
+```
+
+```{r}
+pca_result <- prcomp(scaled_matrix)
+
+plot(pca_result$x[,1:2], col=cluster_assignments, pch=16, 
+     xlab="PC1", ylab="PC2", main="PAM Clustering of Top 5000 Genes")
+
+```
+```{r}
+# Define the numbers of top genes we want to use for clustering
+top_genes_numbers <- c(10, 100, 1000, 5000, 10000)
+
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order
+sorted_genes_indices <- order(gene_variance, decreasing = TRUE)
+
+# Initialize an empty list to store the kmeans results
+pam_results <- list()
+
+set.seed(123)
+
+# Iterate over each top_genes_number and perform clustering
+for (n in top_genes_numbers) {
+  
+  # Extract the top genes
+  top_genes_df <- expression_df[sorted_genes_indices[1:n], ]
+  
+  # Standardize the Data
+  scaled_matrix <- (scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+  
+  # PAM clustering
+  pam_results[[paste0("Top", n)]] <- pam(scaled_matrix, k)
+}
+
+# Now, pam_results is a list with each element being the result of kmeans for a particular number of top genes
+```
+
+```{r}
+# Initialize an empty data frame to store the clustering results
+alluvial_data <- data.frame(Sample = colnames(expression_df))
+
+# Iterate over each clustering result in kmeans_results and add it to the data frame
+for (name in names(pam_results)) {
+  alluvial_data[[name]] <- pam_results[[name]]$clustering
+}
+
+# View the first few rows to ensure it looks correct
+head(alluvial_data)
+
+```
+
+```{r}
+library(ggplot2)
+library(ggalluvial)
+
+ggplot(data = alluvial_data, 
+       aes(axis1 = Top10, axis2 = Top100, axis3 = Top1000, axis4 = Top5000, axis5 = Top10000)) +
+  geom_alluvium(aes(fill = factor(Top10))) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() +
+  labs(title = "Changes in Cluster Memberships Across Different Clustering Setups")
+```
