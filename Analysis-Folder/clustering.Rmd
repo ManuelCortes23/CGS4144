@@ -84,6 +84,7 @@ plot(1:10, wss, type="b", pch=19, frame=FALSE,
      ylab="Total within-clusters sum of squares")
 
 ```
+
 ```{r}
 # 1. Merge clustering results with metadata
 # Assuming the row names of scaled_matrix are the SAMPLE_NAME
@@ -165,6 +166,7 @@ ggplot(data = alluvial_data,
   labs(title = "Changes in Cluster Memberships Across Different Clustering Setups")
 
 ```
+
 ```{r}
 
 # Create contingency table
@@ -240,6 +242,40 @@ results_table <- data.frame(Number_of_Genes = num_genes,
                             Adjusted_P_Value = adjusted_p_values)
 
 print(results_table)
+```
+#Heatmap generation
+
+```{r}
+
+# Assuming you have the sample groups from Assignment 1 in a vector called sample_groups
+annotations <- data.frame(
+  KMeans = merged_df$Cluster,
+  # You should add other clustering methods here.
+  SampleGroup = merged_df$Group # Placeholder. Replace with actual data.
+)
+
+annotations$KMeans <- as.factor(annotations$KMeans)
+
+library(ComplexHeatmap)
+
+Heatmap(
+  matrix = t(scaled_matrix), # Transposed so genes are rows and samples are columns
+  name = "expression",       # Name of the heatmap shown in the legend
+  show_row_names = FALSE,    # Might not want to display 5000 gene names
+  show_column_names = FALSE, # Depends on your sample size
+  cluster_rows = TRUE,       # Cluster genes
+  cluster_columns = TRUE,    # Cluster samples
+  top_annotation = HeatmapAnnotation(df = annotations)
+)
+
+
+```
+
+
+```{r}
+
+
+
 ```
 # Misc DE Stuff
 
