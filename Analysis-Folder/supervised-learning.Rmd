@@ -1,0 +1,360 @@
+---
+title: "differential expression analysis"
+author: "Manuel Cortes"
+date: "2023-09-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+
+# BiocManager::install("clusterProfiler")
+# BiocManager::install("biomaRt")
+
+# Attach the DESeq2 library
+library(DESeq2)
+
+# Attach the ggplot2 library for plotting
+library(ggplot2)
+
+# We will need this so we can use the pipe: %>%
+library(magrittr)
+
+# Human Annotation
+library(org.Hs.eg.db)
+
+
+library(biomaRt)  
+library(clusterProfiler)
+# Load necessary libraries
+library(tidymodels)
+library(kernlab) # for the SVM
+
+set.seed(123)
+
+
+```
+
+# Analysis
+
+# Please see differential-expression-analysis.Rmd to load all necessary variables
+# Here, we will simply load the result from it
+
+#First we will look at the top 5000 genes with the most variance.
+
+```{r}
+# Calculate variance for each gene (row-wise)
+gene_variance <- apply(expression_df, 1, var)
+
+# Sort genes by variance in descending order and get the top 5000
+top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:5000]
+
+# Extract the top 5000 genes
+top_genes_df <- expression_df[top_genes_indices,]
+
+# Standardize the Data
+scaled_matrix <- (scale(t(top_genes_df))) # Transpose is needed because scale operates on columns
+```
+
+# This will run the classifier across all groups in our data for top 5000 genes
+
+```{r}
+
+# Assuming you have metadata with labels in a data frame called 'metadata_df'
+# Ensure that the ordering matches the expression data
+labels <- metadata$Group
+
+# Prepare data for training
+data_train <- as.data.frame(scaled_matrix) # No need to transpose
+data_train$label <- as.factor(labels)
+
+# Splitting data into training and testing sets (e.g., 80% training, 20% testing)
+set.seed(123) # Set seed for reproducibility
+data_split <- initial_split(data_train, prop = 0.8)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+# Define SVM model specification
+svm_spec <- svm_poly() %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
+
+# Train the model
+svm_fit <- svm_spec %>%
+  fit(label ~ ., data = train_data) # Train SVM using training data
+
+# Make predictions and evaluate the model
+predictions <- predict(svm_fit, test_data)
+
+# Add predictions to the test data
+test_data$predicted_label <- predictions$.pred_class
+
+# Compute metrics
+metrics_result <- yardstick::metrics(test_data, truth = label, estimate = predicted_label)
+print(metrics_result)
+
+```
+# Same as above, but generalized to different numbers of genes
+
+```{r}
+# Preprocess data function
+preprocess_data <- function(expression_df, n_genes) {
+  gene_variance <- apply(expression_df, 1, var)
+  top_genes_indices <- order(gene_variance, decreasing = TRUE)[1:n_genes]
+  top_genes_df <- expression_df[top_genes_indices, ]
+  scaled_matrix <- scale(t(top_genes_df))
+  return(scaled_matrix)
+}
+
+# Analysis function
+perform_analysis <- function(scaled_matrix, labels) {
+  data_train <- as.data.frame(scaled_matrix)
+  data_train$label <- as.factor(labels)
+  
+  set.seed(123)
+  data_split <- initial_split(data_train, prop = 0.8)
+  train_data <- training(data_split)
+  test_data <- testing(data_split)
+  
+  svm_spec <- svm_poly() %>%
+    set_engine("kernlab") %>%
+    set_mode("classification")
+  
+  svm_fit <- svm_spec %>%
+    fit(label ~ ., data = train_data)
+  
+  predictions <- predict(svm_fit, test_data)
+  test_data$predicted_label <- predictions$.pred_class
+  
+  metrics_result <- yardstick::metrics(test_data, truth = label, estimate = predicted_label)
+  
+  print(paste("Results for top", ncol(scaled_matrix), "genes:"))
+  print(metrics_result)
+  
+  # Return metrics and SVM weights
+  list(metrics = metrics_result, weights = svm_fit$fit@coef)
+}
+
+# Main loop
+gene_counts <- c(10, 100, 1000, 5000, 10000)
+labels <- metadata$Group
+
+# Initialize vectors and lists
+accuracies <- c()
+svm_weights_list <- list()
+
+for (n_genes in gene_counts) {
+  scaled_matrix <- preprocess_data(expression_df, n_genes)
+  analysis_result <- perform_analysis(scaled_matrix, labels)
+  
+  # Extract accuracy and store in vector
+  acc <- analysis_result$metrics$`.estimate`[analysis_result$metrics$`.metric` == "accuracy"]
+  accuracies <- c(accuracies, acc)
+  
+  # Store SVM weights
+  svm_weights_list[[as.character(n_genes)]] <- analysis_result$weights
+}
+
+# Plotting Accuracy vs. Number of Genes
+df <- data.frame(Number_of_Genes = gene_counts, Accuracy = accuracies)
+ggplot(df, aes(x = Number_of_Genes, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Accuracy vs. Number of Genes", x = "Number of Genes", y = "Accuracy") +
+  theme_minimal()
+
+
+```
+
+# looking at Gene Signatures - THIS PART ISNT WORKING VERY WELL
+
+```{r}
+# Visualizing weights for each SVM model (histogram for each number of genes)
+for (n_genes in gene_counts) {
+  # Extract weights
+  weights <- abs(unlist(svm_weights_list[[as.character(n_genes)]]))
+  
+  # Plot histogram
+  p <- ggplot(data.frame(Weights = weights), aes(x = Weights)) +
+    geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) + 
+    labs(title = paste("Distribution of SVM Model Weights for top", n_genes, "genes"), x = "Weight Value", y = "Count of Genes") +
+    theme_minimal()
+  print(p)
+}
+
+# # Determine overlap between SVM weights (considering a threshold)
+# threshold <- 0.1
+# for (i in 1:length(gene_counts)) {
+#   for (j in (i+1):length(gene_counts)) {
+#     signature_genes_model1 <- names(svm_weights_list[[as.character(gene_counts[i])]])[abs(svm_weights_list[[as.character(gene_counts[i])]]) > threshold]
+#     signature_genes_model2 <- names(svm_weights_list[[as.character(gene_counts[j])]])[abs(svm_weights_list[[as.character(gene_counts[j])]]) > threshold]
+#     overlap <- intersect(signature_genes_model1, signature_genes_model2)
+#     
+#     cat("Overlap between top", gene_counts[i], "and", gene_counts[j], "genes:", length(overlap), "\n")
+#   }
+# }
+
+
+```
+
+# BINARY CLASSIFICATION: This will run the classifier across only Control and Type2 for binary classification & AUC calculation.
+
+```{r}
+# Function to perform binary classification and return metrics
+perform_binary_analysis <- function(scaled_matrix, labels) {
+  # Prepare data for training
+  data_train <- as.data.frame(scaled_matrix)
+  data_train$label <- as.factor(labels)
+  
+  # Subset to only 'Control' and 'Type2' samples
+  binary_data <- data_train[data_train$label %in% c('Control', 'Type2'), ]
+  binary_data$label <- droplevels(binary_data$label)
+  
+  # Splitting data
+  set.seed(123)
+  data_split_binary <- initial_split(binary_data, prop = 0.8)
+  train_data_binary <- training(data_split_binary)
+  test_data_binary <- testing(data_split_binary)
+  
+  # Define and train SVM model
+  svm_spec_binary <- svm_poly() %>%
+    set_engine("kernlab") %>%
+    set_mode("classification")
+  
+  svm_fit_binary <- svm_spec_binary %>%
+    fit(label ~ ., data = train_data_binary)
+  
+  # Make predictions and evaluate
+  predictions_binary <- predict(svm_fit_binary, test_data_binary)
+  test_data_binary$predicted_label <- predictions_binary$.pred_class
+  
+  metrics_result_binary <- yardstick::metrics(test_data_binary, truth = label, estimate = predicted_label)
+  print(paste("Results for top", ncol(scaled_matrix), "genes (Binary Case):"))
+  print(metrics_result_binary)
+  return(metrics_result_binary)
+}
+
+# Main loop
+gene_counts <- c(10, 100, 1000, 5000, 10000)
+labels <- metadata$Group
+accuracies_binary <- c()
+
+for (n_genes in gene_counts) {
+  scaled_matrix <- preprocess_data(expression_df, n_genes)
+  metrics_result_binary <- perform_binary_analysis(scaled_matrix, labels)
+  
+  # Extract accuracy for binary classification and store in vector
+  acc <- metrics_result_binary$`.estimate`[metrics_result_binary$`.metric` == "accuracy"]
+  accuracies_binary <- c(accuracies_binary, acc)
+}
+
+df_binary <- data.frame(Number_of_Genes = gene_counts, Accuracy = accuracies_binary)
+ggplot(df_binary, aes(x = Number_of_Genes, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Binary Classification: Accuracy vs. Number of Genes", x = "Number of Genes", y = "Accuracy") +
+  theme_minimal()
+```
+
+
+```{r}
+
+perform_auc_roc_analysis <- function(scaled_matrix, labels) {
+  
+  # Prepare data for training
+  data_train <- as.data.frame(scaled_matrix) 
+  data_train$label <- as.factor(labels)
+
+  # Subset to only 'Control' and 'Type2' samples
+  binary_data <- data_train[data_train$label %in% c('Control', 'Type2'), ]
+  binary_data$label <- droplevels(binary_data$label)
+
+  # Splitting data into training and testing sets (e.g., 80% training, 20% testing)
+  set.seed(123) # Set seed for reproducibility
+  data_split_binary <- initial_split(binary_data, prop = 0.8)
+  train_data_binary <- training(data_split_binary)
+  test_data_binary <- testing(data_split_binary)
+
+  # Define SVM model specification for binary classification
+  svm_spec_binary <- svm_poly() %>%
+    set_engine("kernlab") %>%
+    set_mode("classification")
+
+  # Train the model on the binary data
+  svm_fit_binary <- svm_spec_binary %>%
+    fit(label ~ ., data = train_data_binary) 
+
+  # Make probability predictions for binary test data
+  probs_binary <- predict(svm_fit_binary, test_data_binary, type = "prob")
+
+  # Bind the probabilities to the binary test data
+  test_data_binary <- bind_cols(test_data_binary, probs_binary)
+
+  # Compute AUC
+  auc_result <- yardstick::roc_auc(test_data_binary, truth = label, .pred_Control)
+  
+  # Compute ROC curve data
+  roc_data <- yardstick::roc_curve(test_data_binary, truth = label, .pred_Control)
+
+  return(list(auc = auc_result, roc = roc_data))
+}
+
+gene_counts <- c(10, 100, 1000, 5000, 10000)
+auc_results <- numeric()
+roc_results <- list()  # This will store the roc data for each gene count
+
+for (n_genes in gene_counts) {
+  scaled_matrix <- preprocess_data(expression_df, n_genes)
+  
+  results <- perform_auc_roc_analysis(scaled_matrix, labels)
+  
+  # Store AUC and ROC curve data
+  auc_results <- c(auc_results, results$auc$`.estimate`)
+  roc_results[[as.character(n_genes)]] <- results$roc
+}
+
+# Plotting AUC vs. Number of Genes
+df_auc <- data.frame(Number_of_Genes = gene_counts, AUC = auc_results)
+ggplot(df_auc, aes(x = Number_of_Genes, y = AUC)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "AUC vs. Number of Genes", x = "Number of Genes", y = "AUC") +
+  theme_minimal()
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Combine all ROC data frames into a single data frame
+all_roc_data <- bind_rows(lapply(gene_counts, function(count) {
+  df <- roc_results[[as.character(count)]]
+  df$gene_count <- count
+  return(df)
+}), .id = "id")
+
+# Now plot all ROC curves using a single ggplot call
+plot <- ggplot(all_roc_data, aes(x = 1 - specificity, y = sensitivity, color = as.factor(gene_count))) +
+  geom_line() +
+  labs(title = "ROC Curves for Various Number of Genes", x = "False Positive Rate", y = "True Positive Rate") +
+  theme_minimal() +
+  coord_fixed(ratio = 1) + # To make sure the plot is square, as ROC plots usually are
+  scale_color_discrete(name = "Number of Genes")
+
+# Print the final plot with all ROC curves
+print(plot)
+
+
+```
+
+
+# BINARY CLASSIFICATION: looking at Gene Signatures
+```{r}
+
+auc_results
+
+```
