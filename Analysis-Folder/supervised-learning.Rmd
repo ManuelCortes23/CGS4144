@@ -135,16 +135,16 @@ perform_analysis <- function(scaled_matrix, labels) {
   print(metrics_result)
   
   # Return metrics and SVM weights
-  list(metrics = metrics_result, weights = svm_fit$fit@coef)
+  list(metrics = metrics_result, svm_model = svm_fit$fit)
 }
 
 # Main loop
-gene_counts <- c(10, 100, 1000, 5000, 10000)
+gene_counts <- c(10, 100, 1000, 5000)#, 10000)
 labels <- metadata$Group
 
 # Initialize vectors and lists
 accuracies <- c()
-svm_weights_list <- list()
+svm_models_list <- list()
 
 for (n_genes in gene_counts) {
   scaled_matrix <- preprocess_data(expression_df, n_genes)
@@ -155,7 +155,7 @@ for (n_genes in gene_counts) {
   accuracies <- c(accuracies, acc)
   
   # Store SVM weights
-  svm_weights_list[[as.character(n_genes)]] <- analysis_result$weights
+  svm_models_list[[as.character(n_genes)]] <- analysis_result$svm_model
 }
 
 # Plotting Accuracy vs. Number of Genes
@@ -172,18 +172,41 @@ ggplot(df, aes(x = Number_of_Genes, y = Accuracy)) +
 # looking at Gene Signatures - THIS PART ISNT WORKING VERY WELL
 
 ```{r}
-# Visualizing weights for each SVM model (histogram for each number of genes)
-for (n_genes in gene_counts) {
-  # Extract weights
-  weights <- abs(unlist(svm_weights_list[[as.character(n_genes)]]))
-  
-  # Plot histogram
-  p <- ggplot(data.frame(Weights = weights), aes(x = Weights)) +
-    geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) + 
-    labs(title = paste("Distribution of SVM Model Weights for top", n_genes, "genes"), x = "Weight Value", y = "Count of Genes") +
-    theme_minimal()
-  print(p)
-}
+
+# Accessing the SVM model from the list
+svm_model_fit <- svm_models_list[['1000']]
+
+# Extract the support vectors
+support_vectors <- svm_model_fit@xmatrix
+
+# Number of support vectors
+cat("Number of support vectors:", nrow(support_vectors), "\n")
+
+# Extract the coefficients (weights)
+weights <- svm_model_fit@coef
+
+# Extract all weights and combine them
+all_weights <- unlist(weights)
+
+# Visualizing the distribution of the weights
+df_weights <- data.frame(Weight = all_weights)
+ggplot(df_weights, aes(x=Weight)) +
+  geom_histogram(bins=30, fill="blue", alpha=0.7) +
+  labs(title="Distribution of SVM Weights") +
+  theme_minimal()
+
+# # Visualizing weights for each SVM model (histogram for each number of genes)
+# for (n_genes in gene_counts) {
+#   # Extract weights
+#   weights <- abs(unlist(svm_weights_list[[as.character(n_genes)]]))
+#   
+#   # Plot histogram
+#   p <- ggplot(data.frame(Weights = weights), aes(x = Weights)) +
+#     geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) + 
+#     labs(title = paste("Distribution of SVM Model Weights for top", n_genes, "genes"), x = "Weight Value", y = "Count of Genes") +
+#     theme_minimal()
+#   print(p)
+# }
 
 # # Determine overlap between SVM weights (considering a threshold)
 # threshold <- 0.1
@@ -234,21 +257,31 @@ perform_binary_analysis <- function(scaled_matrix, labels) {
   metrics_result_binary <- yardstick::metrics(test_data_binary, truth = label, estimate = predicted_label)
   print(paste("Results for top", ncol(scaled_matrix), "genes (Binary Case):"))
   print(metrics_result_binary)
-  return(metrics_result_binary)
+
+  # Return metrics and SVM weights
+  list(metrics = metrics_result_binary, svm_model = svm_fit_binary$fit)
+  
 }
 
 # Main loop
-gene_counts <- c(10, 100, 1000, 5000, 10000)
+gene_counts <- c(10, 100, 1000, 5000)#, 10000)
 labels <- metadata$Group
 accuracies_binary <- c()
+svm_models_list_binary <- list()
+
 
 for (n_genes in gene_counts) {
   scaled_matrix <- preprocess_data(expression_df, n_genes)
-  metrics_result_binary <- perform_binary_analysis(scaled_matrix, labels)
+  analysis_result_binary <- perform_binary_analysis(scaled_matrix, labels)
   
-  # Extract accuracy for binary classification and store in vector
-  acc <- metrics_result_binary$`.estimate`[metrics_result_binary$`.metric` == "accuracy"]
+  # Extract accuracy and store in vector
+  acc <- analysis_result_binary$metrics$`.estimate`[analysis_result_binary$metrics$`.metric` == "accuracy"]
   accuracies_binary <- c(accuracies_binary, acc)
+  
+  # Store SVM weights
+  svm_models_list_binary[[as.character(n_genes)]] <- analysis_result_binary$svm_model
+  
+  
 }
 
 df_binary <- data.frame(Number_of_Genes = gene_counts, Accuracy = accuracies_binary)
@@ -258,7 +291,33 @@ ggplot(df_binary, aes(x = Number_of_Genes, y = Accuracy)) +
   labs(title = "Binary Classification: Accuracy vs. Number of Genes", x = "Number of Genes", y = "Accuracy") +
   theme_minimal()
 ```
+# BINARY CLASSIFICATION: looking at Gene Signatures
+```{r}
 
+# Accessing the SVM model from the list
+svm_model_fit <- svm_models_list_binary[['5000']]
+
+# Extract the support vectors
+support_vectors <- svm_model_fit@xmatrix
+
+# Number of support vectors
+cat("Number of support vectors:", nrow(support_vectors[[1]]), "\n")
+
+# Extract the coefficients (weights)
+weights <- svm_model_fit@coef
+
+# Extract all weights and combine them
+all_weights <- unlist(weights)
+
+# Visualizing the distribution of the weigghts
+df_weights <- data.frame(Weight = all_weights)
+ggplot(df_weights, aes(x=Weight)) +
+  geom_histogram(bins=30, fill="blue", alpha=0.7) +
+  labs(title="Distribution of SVM Weights") +
+  theme_minimal()
+
+
+```
 
 ```{r}
 
@@ -348,13 +407,5 @@ plot <- ggplot(all_roc_data, aes(x = 1 - specificity, y = sensitivity, color = a
 # Print the final plot with all ROC curves
 print(plot)
 
-
-```
-
-
-# BINARY CLASSIFICATION: looking at Gene Signatures
-```{r}
-
-auc_results
 
 ```
