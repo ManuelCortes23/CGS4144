@@ -35,6 +35,9 @@ library(kernlab) # for the SVM
 
 set.seed(123)
 
+library(mlr3)
+library(mlr3learners)
+library(mlr3tuning)
 
 ```
 
@@ -169,12 +172,13 @@ ggplot(df, aes(x = Number_of_Genes, y = Accuracy)) +
 
 ```
 
+#Trying out mlr3
 # looking at Gene Signatures - THIS PART ISNT WORKING VERY WELL
 
 ```{r}
 
 # Accessing the SVM model from the list
-svm_model_fit <- svm_models_list[['1000']]
+svm_model_fit <- svm_models_list[['5000']]
 
 # Extract the support vectors
 support_vectors <- svm_model_fit@xmatrix
@@ -194,31 +198,6 @@ ggplot(df_weights, aes(x=Weight)) +
   geom_histogram(bins=30, fill="blue", alpha=0.7) +
   labs(title="Distribution of SVM Weights") +
   theme_minimal()
-
-# # Visualizing weights for each SVM model (histogram for each number of genes)
-# for (n_genes in gene_counts) {
-#   # Extract weights
-#   weights <- abs(unlist(svm_weights_list[[as.character(n_genes)]]))
-#   
-#   # Plot histogram
-#   p <- ggplot(data.frame(Weights = weights), aes(x = Weights)) +
-#     geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) + 
-#     labs(title = paste("Distribution of SVM Model Weights for top", n_genes, "genes"), x = "Weight Value", y = "Count of Genes") +
-#     theme_minimal()
-#   print(p)
-# }
-
-# # Determine overlap between SVM weights (considering a threshold)
-# threshold <- 0.1
-# for (i in 1:length(gene_counts)) {
-#   for (j in (i+1):length(gene_counts)) {
-#     signature_genes_model1 <- names(svm_weights_list[[as.character(gene_counts[i])]])[abs(svm_weights_list[[as.character(gene_counts[i])]]) > threshold]
-#     signature_genes_model2 <- names(svm_weights_list[[as.character(gene_counts[j])]])[abs(svm_weights_list[[as.character(gene_counts[j])]]) > threshold]
-#     overlap <- intersect(signature_genes_model1, signature_genes_model2)
-#     
-#     cat("Overlap between top", gene_counts[i], "and", gene_counts[j], "genes:", length(overlap), "\n")
-#   }
-# }
 
 
 ```
@@ -260,11 +239,13 @@ perform_binary_analysis <- function(scaled_matrix, labels) {
 
   # Return metrics and SVM weights
   list(metrics = metrics_result_binary, svm_model = svm_fit_binary$fit)
+  return(list(metrics = metrics_result_binary, svm_model = svm_fit_binary$fit, test_data = test_data_binary))
+
   
 }
 
 # Main loop
-gene_counts <- c(10, 100, 1000, 5000)#, 10000)
+gene_counts <- c(10,100,1000,5000,10000)
 labels <- metadata$Group
 accuracies_binary <- c()
 svm_models_list_binary <- list()
@@ -280,6 +261,9 @@ for (n_genes in gene_counts) {
   
   # Store SVM weights
   svm_models_list_binary[[as.character(n_genes)]] <- analysis_result_binary$svm_model
+  
+  test_data_binary <- analysis_result_binary$test_data
+
   
   
 }
@@ -315,6 +299,59 @@ ggplot(df_weights, aes(x=Weight)) +
   geom_histogram(bins=30, fill="blue", alpha=0.7) +
   labs(title="Distribution of SVM Weights") +
   theme_minimal()
+
+
+# Assuming 'support_vectors' is a matrix and 'weights' is a vector
+weighted_support_vectors <- t(t(support_vectors[[1]]) * weights[[1]])
+
+# Identify the most influential feature for each support vector
+most_influential_features <- apply(weighted_support_vectors, 1, function(sv) {
+  feature_index <- which.max(abs(sv))
+  feature_name <- colnames(weighted_support_vectors)[feature_index]
+  return(feature_name)
+})
+
+# Analyzing the most influential features
+unique_features <- unique(most_influential_features)
+feature_importance_count <- table(most_influential_features)
+
+```
+
+```{r}
+library(pheatmap)
+
+# Assuming 'expression_df' has gene names as row names
+# and sample identifiers as column names
+selected_data <- expression_df[unique_features, ]
+
+# Optional: Filter out genes with low variance
+var_threshold <- 0.01  # Adjust as needed
+var_genes <- apply(selected_data, 1, var)
+selected_data <- selected_data[var_genes > var_threshold, ]
+
+# Scale the data
+scaled_data <- t(scale(t(selected_data)))
+
+# Creating the heatmap with axis titles
+pheatmap(scaled_data, 
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",
+         scale = "none",
+         color = colorRampPalette(c("blue", "white", "red"))(100),
+         show_rownames = FALSE,  # Hide row names
+         show_colnames = FALSE,  # Hide column names
+         labels_row = "Genes",
+         labels_col = "Samples",
+         fontsize_row = 10,
+         fontsize_col = 10,
+         main = "Gene Expression Heatmap",
+         annotation_legend = TRUE,
+         fontsize = 12)
+
+# Add custom axis titles
+mtext("Genes", side = 2, line = 3, cex = 1.2)
+mtext("Samples", side = 1, line = 3, cex = 1.2)
 
 
 ```
@@ -361,7 +398,7 @@ perform_auc_roc_analysis <- function(scaled_matrix, labels) {
   return(list(auc = auc_result, roc = roc_data))
 }
 
-gene_counts <- c(10, 100, 1000, 5000, 10000)
+gene_counts <- c(10, 100)#, 1000, 5000, 10000)
 auc_results <- numeric()
 roc_results <- list()  # This will store the roc data for each gene count
 
